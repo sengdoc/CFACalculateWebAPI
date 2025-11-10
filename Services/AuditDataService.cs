@@ -5,18 +5,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CFACalculateWebAPI.Services
 {
-
-
     public class AuditDataService
     {
-          public class TimedFinalFillResult
-    {
-        public List<double> TimedFills { get; set; } = new List<double>();
-        public List<double> FinalFills { get; set; } = new List<double>();
-        public List<int> MainFillIndicators { get; set; } = new List<int>();
-         
-    }
-      
+        public class TimedFinalFillResult
+        {
+            public List<double> TimedFills { get; set; } = new List<double>();
+            public List<double> FinalFills { get; set; } = new List<double>();
+            public List<int> MainFillIndicators { get; set; } = new List<int>();
+        }
+
         private readonly AppDbContext _context;
 
         public AuditDataService(AppDbContext context)
@@ -114,7 +111,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
         /// <summary>
         /// Calculate Timed Final Fills
         /// </summary>
-    public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
+        public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
         {
             var timedFills = new List<double>();
 
@@ -165,33 +162,32 @@ ORDER BY FILLS;";
 
             using var reader = await cmd.ExecuteReaderAsync();
             double tempResult = 0;
-                int i = 0;
-           while (await reader.ReadAsync())
-{
-    double value = reader.GetDouble(0); // SQL result from the "fills" column
+            int i = 0;
+            while (await reader.ReadAsync())
+            {
+                double value = reader.GetDouble(0);
 
+                if (i == 0)
+                {
+                    tempResult = value;
+                    timedFills.Add(tempResult);
+                }
+                else
+                {
+                    double delta = value - tempResult;
+                    timedFills.Add(delta);
+                    tempResult = value;
+                }
 
-
-    if (i == 0)
-    {
-        tempResult = value;
-        timedFills.Add(tempResult);
-    }
-    else
-    {
-        double delta = value - tempResult;
-        timedFills.Add(delta);
-        tempResult = value;
-    }
-
-    i++;
-}
+                i++;
+            }
 
             // ===== Calculate Final Fills based on Delphi logic =====
             var finalFillResult = CalculateFinalFills(timedFills);
 
             return finalFillResult;
         }
+
         private TimedFinalFillResult CalculateFinalFills(List<double> timedFills)
         {
             int n = timedFills.Count;
@@ -232,7 +228,88 @@ ORDER BY FILLS;";
             };
         }
 
-    }
-    
-}
+        /// <summary>
+        /// Calculate FVFR (converted from Delphi calFVFRN)
+        /// </summary>
+        public async Task<double> CalFVFRNAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
+        {
+            double[] fvfrIn = new double[mainFillTimes];
 
+            using var conn = _context.Database.GetDbConnection();
+             conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+            for (int i = 0; i < mainFillTimes; i++)
+            {
+                int startNo = mainFillRanges[i].start + 4;
+                int endNo = mainFillRanges[i].end - 3;
+                string sampleRange = $"({startNo},{endNo})";
+
+                string sql = $@"
+WITH basedata AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY seconds ASC) AS SampleRun,
+           seconds, voltage, [current], [power],
+           powerusage, waterusage, temperature, waterpressure, watertemperature
+    FROM cfa_data_excel
+    WHERE auditid = {(string.IsNullOrEmpty(auditId)
+        ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = '{serial}' ORDER BY AuditID DESC)"
+        : $"'{auditId}'")}
+),
+FVFR AS (
+    SELECT 
+        CAST(waterusage AS FLOAT) * (
+            -0.00000001 * POWER(CAST(watertemperature AS FLOAT), 3) +
+             0.000006 * POWER(CAST(watertemperature AS FLOAT), 2) +
+            -0.00002 * CAST(watertemperature AS FLOAT) + 1
+        ) AS TempComp,
+        basedata.seconds,
+        basedata.SampleRun
+    FROM basedata
+    WHERE basedata.SampleRun IN {sampleRange}
+)
+SELECT FVFR.TempComp, FVFR.seconds
+FROM FVFR
+ORDER BY FVFR.seconds ASC;
+";
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                double? firstTemp = null, firstSec = null;
+                double? secondTemp = null, secondSec = null;
+                int j = 0;
+
+                while (await reader.ReadAsync())
+                {
+                    double temp = reader.GetDouble(0);
+                    double sec = reader.GetDouble(1);
+
+                    if (j == 0)
+                    {
+                        firstTemp = temp;
+                        firstSec = sec;
+                    }
+                    else if (j == 1)
+                    {
+                        secondTemp = temp;
+                        secondSec = sec;
+
+                        if (firstTemp.HasValue && secondTemp.HasValue && firstSec.HasValue && secondSec.HasValue)
+                        {
+                            fvfrIn[i] = (secondTemp.Value - firstTemp.Value) / (secondSec.Value - firstSec.Value);
+                        }
+                    }
+
+                    j++;
+                }
+
+                reader.Close();
+            }
+
+            // Average FVFR across all fills
+            return fvfrIn.Average();
+        }
+    }
+}
