@@ -79,6 +79,38 @@ namespace CFACalculateWebAPI.Controllers
             }
         }
         
+        [HttpGet("CalInComWTemp")]
+public async Task<IActionResult> CalInComWTemp(
+    string? serial,
+    string? auditId,
+    int mainFillTimes = 3,
+    [FromQuery] int[] startNos = null!,
+    [FromQuery] int[] endNos = null!)
+{
+    try
+    {
+        if (startNos == null || endNos == null || startNos.Length != endNos.Length)
+            return BadRequest(new { message = "startNos and endNos must have the same length." });
+
+        var fillRanges = new List<(int start, int end)>();
+        for (int i = 0; i < startNos.Length; i++)
+            fillRanges.Add((startNos[i], endNos[i]));
+
+        double avgTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
+
+        return Ok(new
+        {
+            Message = "Average water temperature calculation complete.",
+            AvgWaterTemp = avgTemp
+        });
+    }
+    catch (Exception ex)
+    {
+        return BadRequest(new { message = ex.Message });
+    }
+}
+
+
         [HttpGet("RunFullCalculation")]
         public async Task<IActionResult> RunFullCalculation(string? serial, string? auditId)
         {
@@ -116,7 +148,8 @@ namespace CFACalculateWebAPI.Controllers
                  // Call the calculation service
                 double fvfrValue = await _service.CalFVFRNAsync(serial, auditId, mainFillTimes, fillRanges);
 
-                
+                double IncomingWaterTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
+                 
                 // Step 5: Return combined result
                 return Ok(new
                 {
@@ -125,7 +158,8 @@ namespace CFACalculateWebAPI.Controllers
                     FinalFills = fillResult.FinalFills,
                     MainFillIndicators = fillResult.MainFillIndicators,
                     FillVolume = fillVolumeI,
-                    FVFR = fvfrValue
+                    FVFR = fvfrValue,
+                    IncomingWaterTemperature = IncomingWaterTemp
 
                 });
             }

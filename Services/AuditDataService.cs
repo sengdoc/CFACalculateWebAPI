@@ -236,7 +236,7 @@ ORDER BY FILLS;";
             double[] fvfrIn = new double[mainFillTimes];
 
             using var conn = _context.Database.GetDbConnection();
-             conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
             if (conn.State != System.Data.ConnectionState.Open)
                 await conn.OpenAsync();
 
@@ -311,5 +311,62 @@ ORDER BY FVFR.seconds ASC;
             // Average FVFR across all fills
             return fvfrIn.Average();
         }
+        
+
+        /// <summary>
+/// Calculate average water temperature with compensation (converted from Delphi calInComWTemp)
+/// </summary>
+public async Task<double> CalInComWTempAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
+{
+    using var conn = _context.Database.GetDbConnection();
+    conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+    if (conn.State != System.Data.ConnectionState.Open)
+        await conn.OpenAsync();
+
+    var temps = new List<double>();
+
+    for (int i = 0; i < mainFillTimes; i++)
+    {
+        int startNo = mainFillRanges[i].start + 1; // Delphi adds +1
+        int endNo = mainFillRanges[i].end + 1;
+        string sampleRange = $"{startNo},{endNo}";
+
+        string sql = $@"
+WITH basedata AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY seconds ASC) AS SampleRun,
+           seconds, voltage, [current], [power],
+           powerusage, waterusage, temperature, waterpressure, watertemperature
+    FROM cfa_data_excel
+    WHERE auditid = {(string.IsNullOrEmpty(auditId)
+        ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = '{serial}' ORDER BY AuditID DESC)"
+        : $"'{auditId}'")}
+),
+FVFR AS (
+    SELECT CAST(waterusage AS FLOAT) * (
+        -0.00000001 * POWER(CAST(watertemperature AS FLOAT), 3) +
+         0.000006 * POWER(CAST(watertemperature AS FLOAT), 2) +
+        -0.00002 * CAST(watertemperature AS FLOAT) + 1
+    ) AS TempComp,
+    basedata.seconds,
+    basedata.WaterTemperature,
+    basedata.SampleRun
+    FROM basedata
+    WHERE (basedata.SampleRun BETWEEN {startNo} AND {endNo})
+)
+SELECT AVG(CAST(watertemperature AS FLOAT))
+FROM FVFR;";
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        var result = await cmd.ExecuteScalarAsync();
+        if (result != DBNull.Value && result != null)
+            temps.Add(Convert.ToDouble(result));
+    }
+
+    // Average across all main fills
+    return temps.Count > 0 ? temps.Average() : 0;
+}
+
     }
 }
