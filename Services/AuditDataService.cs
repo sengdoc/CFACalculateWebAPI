@@ -2,7 +2,7 @@ using CFACalculateWebAPI.Data;
 using CFACalculateWebAPI.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-
+using System.Data.Common; // ✅ add this
 namespace CFACalculateWebAPI.Services
 {
     public class AuditDataService
@@ -20,6 +20,23 @@ namespace CFACalculateWebAPI.Services
         {
             _context = context; // ✅ injected DbContext ensures connection string is set
         }
+
+private async Task<DbConnection> GetOpenConnectionAsync()
+{
+    var conn = _context.Database.GetDbConnection();
+
+    if (conn.State != System.Data.ConnectionState.Open)
+    {
+        // Set connection string only if not set
+        if (string.IsNullOrEmpty(conn.ConnectionString))
+        {
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+        }
+        await conn.OpenAsync();
+    }
+
+    return conn;
+}
 
 
         // Init Sample Run Numbers        
@@ -81,9 +98,8 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
 
             sql = string.Format(sql, auditCondition);
 
-            using var conn = _context.Database.GetDbConnection();
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
+
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
@@ -144,10 +160,7 @@ SELECT FILLS
 FROM timedfills
 ORDER BY FILLS;";
 
-            using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
@@ -231,10 +244,7 @@ ORDER BY FILLS;";
         {
             double[] fvfrIn = new double[mainFillTimes];
 
-            using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             for (int i = 0; i < mainFillTimes; i++)
             {
@@ -311,10 +321,7 @@ ORDER BY FVFR.seconds ASC;
         // Calculate average water temperature with compensation (converted from Delphi calInComWTemp)
         public async Task<double> CalInComWTempAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
         {
-            using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             var temps = new List<double>();
 
@@ -364,10 +371,7 @@ FROM FVFR;";
         // Calculate heat-up rate (°C/s), converted from Delphi calHeatUpRate
         public async Task<double> CalHeatUpRateAsync(string? serial, string? auditId)
         {
-            using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             string sql = $@"
 WITH Dat1 AS (
@@ -443,10 +447,7 @@ FROM dat6, dat7, dat8;
         public async Task<double> CalCycleTimeAsync(string? serial, string? auditId)
         {
 
-            using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             string sql = string.IsNullOrEmpty(auditId)
                 ? @"
@@ -484,11 +485,8 @@ public async Task<TemperatureResult> CalTemperatureTNAsync(
 {
     var result = new TemperatureResult();
 
-          using var conn = _context.Database.GetDbConnection();
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
-
+            using var conn = await GetOpenConnectionAsync();
+          
     for (int i = 0; i < mainFillTimes; i++)
     {
         // ✅ Build dynamic SQL for each section
