@@ -78,30 +78,90 @@ namespace CFACalculateWebAPI.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
-        
+
         [HttpGet("CalInComWTemp")]
-public async Task<IActionResult> CalInComWTemp(
+        public async Task<IActionResult> CalInComWTemp(
     string? serial,
     string? auditId,
     int mainFillTimes = 3,
     [FromQuery] int[] startNos = null!,
     [FromQuery] int[] endNos = null!)
+        {
+            try
+            {
+                if (startNos == null || endNos == null || startNos.Length != endNos.Length)
+                    return BadRequest(new { message = "startNos and endNos must have the same length." });
+
+                var fillRanges = new List<(int start, int end)>();
+                for (int i = 0; i < startNos.Length; i++)
+                    fillRanges.Add((startNos[i], endNos[i]));
+
+                double avgTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
+
+                return Ok(new
+                {
+                    Message = "Average water temperature calculation complete.",
+                    AvgWaterTemp = avgTemp
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("CalHeatUpRate")]
+        public async Task<IActionResult> CalHeatUpRate(string? serial, string? auditId)
+        {
+            try
+            {
+                // Call the service to calculate Heat-Up Rate
+                double heatUpRate = await _service.CalHeatUpRateAsync(serial, auditId);
+
+                return Ok(new
+                {
+                    Message = "Heat-Up Rate calculation complete.",
+                    HeatUpRateCPerS = heatUpRate
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+ [HttpGet("CalCycleTime")]
+        public async Task<IActionResult> CalCycleTime(string? serial, string? auditId)
+        {
+            try
+            {
+                double cycleTime = await _service.CalCycleTimeAsync(serial, auditId);
+                return Ok(new
+                {
+                    Message = "Cycle Time calculated successfully.",
+                    CycleTimeMinutes = cycleTime
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("CalTemperatureTN")]
+public async Task<IActionResult> CalTemperatureTN(
+    string? serial,
+    string? auditId,
+    [FromQuery] int[] gStartNoMain,
+    [FromQuery] int[] gEndNoMain,
+    int mainFillTimes = 3)
 {
     try
     {
-        if (startNos == null || endNos == null || startNos.Length != endNos.Length)
-            return BadRequest(new { message = "startNos and endNos must have the same length." });
-
-        var fillRanges = new List<(int start, int end)>();
-        for (int i = 0; i < startNos.Length; i++)
-            fillRanges.Add((startNos[i], endNos[i]));
-
-        double avgTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
-
+        var result = await _service.CalTemperatureTNAsync(serial, auditId, gStartNoMain, gEndNoMain, mainFillTimes);
         return Ok(new
         {
-            Message = "Average water temperature calculation complete.",
-            AvgWaterTemp = avgTemp
+            Message = "Temperature calculation successful.",
+            TemperatureIn = result.TemperatureIn
         });
     }
     catch (Exception ex)
@@ -134,34 +194,61 @@ public async Task<IActionResult> CalInComWTemp(
 
                 // mainFillTimes find by look in the fillResult.TimedFills if data in array > 0 count 1
                 var mainFillTimes = 0;
+
+                 var TemperStrS = new List<int>();
+                 var TemperEndS = new List<int>();
+                         
                 var fillRanges = new List<(int start, int end)>();
                 for (int i = 0; i < fillResult.MainFillIndicators.Count; i++)
                 {
                     if (fillResult.MainFillIndicators[i] > 0)
                     {
-                        fillRanges.Add((sampleRuns[i].StartSampleRun , sampleRuns[i].EndSampleRun ));
+                        fillRanges.Add((sampleRuns[i].StartSampleRun, sampleRuns[i].EndSampleRun));
+
+                        TemperStrS.Add(sampleRuns[i].StartSampleRun);
                         mainFillTimes++;
                     }
                 }
-          
-
-                 // Call the calculation service
+                for (int i =1; i<TemperStrS.Count;i++)
+                {
+                    TemperEndS.Add(TemperStrS[i]);
+                    if ((i + 1) == TemperStrS.Count)
+                        TemperEndS.Add(9999);
+                } 
+                // Call the calculation service
                 double fvfrValue = await _service.CalFVFRNAsync(serial, auditId, mainFillTimes, fillRanges);
 
                 double IncomingWaterTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
-                 
-                // Step 5: Return combined result
-                return Ok(new
-                {
-                    SampleRuns = sampleRuns,
-                    TimedFills = fillResult.TimedFills,
-                    FinalFills = fillResult.FinalFills,
-                    MainFillIndicators = fillResult.MainFillIndicators,
-                    FillVolume = fillVolumeI,
-                    FVFR = fvfrValue,
-                    IncomingWaterTemperature = IncomingWaterTemp
 
-                });
+                double heatUpRate = await _service.CalHeatUpRateAsync(serial, auditId);
+
+                double cycleTime = await _service.CalCycleTimeAsync(serial, auditId);
+
+                var TemperResult = await _service.CalTemperatureTNAsync(serial, auditId, TemperStrS.ToArray(), TemperEndS.ToArray(), mainFillTimes);
+
+                double MainWashTempI = TemperResult.TemperatureIn[0];
+
+                double FinalRinseTempI;
+                if (TemperResult.TemperatureIn[mainFillTimes] == 0)
+                    FinalRinseTempI = TemperResult.TemperatureIn[mainFillTimes - 1];
+                else
+                    FinalRinseTempI = TemperResult.TemperatureIn[mainFillTimes];
+                    // Step 5: Return combined result
+                    return Ok(new
+                    {
+                        SampleRuns = sampleRuns,
+                        TimedFills = fillResult.TimedFills,
+                        FinalFills = fillResult.FinalFills,
+                        MainFillIndicators = fillResult.MainFillIndicators,
+                        FillVolume = fillVolumeI,
+                        FVFR = fvfrValue,
+                        IncomingWaterTemperature = IncomingWaterTemp,
+                        HeatUpRateCPerS = heatUpRate,
+                        cycleTime = cycleTime,
+                        MainWashTemp = MainWashTempI,
+                        FinalRinseTemp = FinalRinseTempI
+
+                    });
             }
             catch (Exception ex)
             {
@@ -169,7 +256,9 @@ public async Task<IActionResult> CalInComWTemp(
             }
         }
 
-        
+       
+
+
 
 
     }

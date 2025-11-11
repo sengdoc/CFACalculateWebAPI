@@ -21,9 +21,8 @@ namespace CFACalculateWebAPI.Services
             _context = context; // ✅ injected DbContext ensures connection string is set
         }
 
-        /// <summary>
-        /// Init Sample Run Numbers
-        /// </summary>
+
+        // Init Sample Run Numbers        
         public async Task<List<SampleRunResult>> InitSampleRunNoAsync(string? serial, string? auditId)
         {
             var results = new List<SampleRunResult>();
@@ -108,9 +107,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             return results;
         }
 
-        /// <summary>
-        /// Calculate Timed Final Fills
-        /// </summary>
+        // Calculate Timed Final Fills
         public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
         {
             var timedFills = new List<double>();
@@ -188,6 +185,7 @@ ORDER BY FILLS;";
             return finalFillResult;
         }
 
+        // Calculate Final Fills
         private TimedFinalFillResult CalculateFinalFills(List<double> timedFills)
         {
             int n = timedFills.Count;
@@ -228,9 +226,7 @@ ORDER BY FILLS;";
             };
         }
 
-        /// <summary>
-        /// Calculate FVFR (converted from Delphi calFVFRN)
-        /// </summary>
+        // Calculate FVFR (converted from Delphi calFVFRN)
         public async Task<double> CalFVFRNAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
         {
             double[] fvfrIn = new double[mainFillTimes];
@@ -311,35 +307,32 @@ ORDER BY FVFR.seconds ASC;
             // Average FVFR across all fills
             return fvfrIn.Average();
         }
-        
 
-        /// <summary>
-/// Calculate average water temperature with compensation (converted from Delphi calInComWTemp)
-/// </summary>
-public async Task<double> CalInComWTempAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
-{
-    using var conn = _context.Database.GetDbConnection();
-    conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-    if (conn.State != System.Data.ConnectionState.Open)
-        await conn.OpenAsync();
+        // Calculate average water temperature with compensation (converted from Delphi calInComWTemp)
+        public async Task<double> CalInComWTempAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
+        {
+            using var conn = _context.Database.GetDbConnection();
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
 
-    var temps = new List<double>();
+            var temps = new List<double>();
 
-    for (int i = 0; i < mainFillTimes; i++)
-    {
-        int startNo = mainFillRanges[i].start + 1; // Delphi adds +1
-        int endNo = mainFillRanges[i].end + 1;
-        string sampleRange = $"{startNo},{endNo}";
+            for (int i = 0; i < mainFillTimes; i++)
+            {
+                int startNo = mainFillRanges[i].start + 1; // Delphi adds +1
+                int endNo = mainFillRanges[i].end + 1;
+                string sampleRange = $"{startNo},{endNo}";
 
-        string sql = $@"
+                string sql = $@"
 WITH basedata AS (
     SELECT ROW_NUMBER() OVER (ORDER BY seconds ASC) AS SampleRun,
            seconds, voltage, [current], [power],
            powerusage, waterusage, temperature, waterpressure, watertemperature
     FROM cfa_data_excel
     WHERE auditid = {(string.IsNullOrEmpty(auditId)
-        ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = '{serial}' ORDER BY AuditID DESC)"
-        : $"'{auditId}'")}
+                ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = '{serial}' ORDER BY AuditID DESC)"
+                : $"'{auditId}'")}
 ),
 FVFR AS (
     SELECT CAST(waterusage AS FLOAT) * (
@@ -356,16 +349,196 @@ FVFR AS (
 SELECT AVG(CAST(watertemperature AS FLOAT))
 FROM FVFR;";
 
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
 
-        var result = await cmd.ExecuteScalarAsync();
-        if (result != DBNull.Value && result != null)
-            temps.Add(Convert.ToDouble(result));
+                var result = await cmd.ExecuteScalarAsync();
+                if (result != DBNull.Value && result != null)
+                    temps.Add(Convert.ToDouble(result));
+            }
+
+            // Average across all main fills
+            return temps.Count > 0 ? temps.Average() : 0;
+        }
+
+        // Calculate heat-up rate (°C/s), converted from Delphi calHeatUpRate
+        public async Task<double> CalHeatUpRateAsync(string? serial, string? auditId)
+        {
+            using var conn = _context.Database.GetDbConnection();
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+            string sql = $@"
+WITH Dat1 AS (
+    SELECT Seconds, power AS PowerUse, Temperature, Seconds AS CycleTSec
+    FROM cfa_data_excel
+    WHERE auditid = {(string.IsNullOrEmpty(auditId)
+                ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = '{serial}' ORDER BY AuditID DESC)"
+                : $"'{auditId}'")}
+),
+Dat2 AS (
+    SELECT Seconds,
+           IIF(CAST(PowerUse AS FLOAT) > 300, 1, 0) AS ProductHeating
+    FROM Dat1
+),
+Dat3 AS (
+    SELECT Seconds,
+           IIF(ProductHeating > LAG(ProductHeating) OVER (ORDER BY Seconds), 1, 0) AS MidFlgHeatStart,
+           IIF(ProductHeating < LAG(ProductHeating) OVER (ORDER BY Seconds), 1, 0) AS MidFlgHeatEnd
+    FROM Dat2
+),
+Dat4 AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY Dat3.Seconds ASC) AS RunNo,
+           MidFlgHeatStart, MidFlgHeatEnd, Seconds
+    FROM Dat3
+),
+Dat5 AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY dt1.CycleTSec ASC) AS RNo,
+           dt1.PowerUse,
+           dt4.RunNo,
+           dt1.Temperature,
+           dt1.CycleTSec
+    FROM Dat4 dt4
+    INNER JOIN Dat1 dt1 ON dt4.Seconds = dt1.Seconds
+    WHERE dt4.MidFlgHeatStart = 1 OR dt4.MidFlgHeatEnd = 1
+),
+dat6 AS (
+    SELECT TOP 1 
+        (LEAD(CAST(Temperature AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(Temperature AS FLOAT)) /
+        (LEAD(CAST(CycleTSec AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(CycleTSec AS FLOAT)) AS HeatUp
+    FROM Dat5
+    WHERE RNo IN (1,2)
+),
+dat7 AS (
+    SELECT TOP 1 
+        (LEAD(CAST(Temperature AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(Temperature AS FLOAT)) /
+        (LEAD(CAST(CycleTSec AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(CycleTSec AS FLOAT)) AS HeatUp
+    FROM Dat5
+    WHERE RNo IN (3,4)
+),
+dat8 AS (
+    SELECT IIF(
+        (SELECT TOP 1 (LEAD(CAST(Temperature AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(Temperature AS FLOAT)) /
+         (LEAD(CAST(CycleTSec AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(CycleTSec AS FLOAT))
+         FROM Dat5 WHERE RNo IN (5,6)) IS NULL,
+        0,
+        (SELECT TOP 1 (LEAD(CAST(Temperature AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(Temperature AS FLOAT)) /
+         (LEAD(CAST(CycleTSec AS FLOAT),1) OVER (ORDER BY CycleTSec) - CAST(CycleTSec AS FLOAT))
+         FROM Dat5 WHERE RNo IN (5,6))
+    ) AS HeatUp
+)
+SELECT (ROUND(dat6.HeatUp,3) + ROUND(dat7.HeatUp,3) + ROUND(dat8.HeatUp,3)) /
+       IIF(dat8.HeatUp = 0, 2, 3) AS HeatUpRate
+FROM dat6, dat7, dat8;
+";
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null && result != DBNull.Value ? Convert.ToDouble(result) : 0;
+        }
+
+        public async Task<double> CalCycleTimeAsync(string? serial, string? auditId)
+        {
+
+            using var conn = _context.Database.GetDbConnection();
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+            string sql = string.IsNullOrEmpty(auditId)
+                ? @"
+            SELECT MAX(seconds) / 60.0
+            FROM cfa_data_excel
+            WHERE auditid = (
+                SELECT TOP 1 AuditID
+                FROM Audit
+                WHERE Serial = @Serial
+                ORDER BY AuditID DESC
+            )"
+                : @"
+            SELECT MAX(seconds) / 60.0
+            FROM cfa_data_excel
+            WHERE auditid = @AuditId";
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            if (string.IsNullOrEmpty(auditId))
+                cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+            else
+                cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+
+            var result = await cmd.ExecuteScalarAsync();
+            return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
+        }
+
+public async Task<TemperatureResult> CalTemperatureTNAsync(
+    string? serial,
+    string? auditId,
+    int[] gStartNoMain,
+    int[] gEndNoMain,
+    int mainFillTimes)
+{
+    var result = new TemperatureResult();
+
+          using var conn = _context.Database.GetDbConnection();
+            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+    for (int i = 0; i < mainFillTimes; i++)
+    {
+        // ✅ Build dynamic SQL for each section
+        string baseSql = @"
+            WITH basedata AS (
+                SELECT 
+                    ROW_NUMBER() OVER (ORDER BY seconds ASC) AS SampleRun,
+                    seconds, voltage, [current], [power], powerusage,
+                    waterusage, temperature, waterpressure, watertemperature
+                FROM cfa_data_excel
+                WHERE auditid = " + (string.IsNullOrEmpty(auditId)
+                    ? "(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+                    : "@AuditId") + @"
+            ),
+            TEMPMAX AS (
+                SELECT 
+                    CAST(waterusage AS FLOAT) * 
+                    (
+                        -0.00000001 * POWER(CAST(watertemperature AS FLOAT), 3)
+                        + 0.000006 * POWER(CAST(watertemperature AS FLOAT), 2)
+                        - 0.00002 * CAST(watertemperature AS FLOAT)
+                        + 1
+                    ) AS TempComp,
+                    basedata.seconds,
+                    basedata.temperature,
+                    basedata.samplerun
+                FROM basedata
+                WHERE basedata.samplerun >= @StartNo AND basedata.samplerun <= @EndNo
+            )
+            SELECT MAX(TEMPMAX.temperature) FROM TEMPMAX;
+        ";
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = baseSql;
+
+        if (string.IsNullOrEmpty(auditId))
+            cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+        else
+            cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+
+        cmd.Parameters.Add(new SqlParameter("@StartNo", gStartNoMain[i]));
+        cmd.Parameters.Add(new SqlParameter("@EndNo", gEndNoMain.Length > i ? gEndNoMain[i] : 9999));
+
+        var scalarResult = await cmd.ExecuteScalarAsync();
+        result.TemperatureIn[i] = scalarResult != null && scalarResult != DBNull.Value
+            ? Convert.ToDouble(scalarResult)
+            : 0.0;
     }
 
-    // Average across all main fills
-    return temps.Count > 0 ? temps.Average() : 0;
+    return result;
 }
 
     }
