@@ -129,7 +129,7 @@ namespace CFACalculateWebAPI.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
- [HttpGet("CalCycleTime")]
+        [HttpGet("CalCycleTime")]
         public async Task<IActionResult> CalCycleTime(string? serial, string? auditId)
         {
             try
@@ -148,28 +148,93 @@ namespace CFACalculateWebAPI.Controllers
         }
 
         [HttpGet("CalTemperatureTN")]
-public async Task<IActionResult> CalTemperatureTN(
+        public async Task<IActionResult> CalTemperatureTN(
     string? serial,
     string? auditId,
     [FromQuery] int[] gStartNoMain,
     [FromQuery] int[] gEndNoMain,
     int mainFillTimes = 3)
-{
-    try
-    {
-        var result = await _service.CalTemperatureTNAsync(serial, auditId, gStartNoMain, gEndNoMain, mainFillTimes);
-        return Ok(new
         {
-            Message = "Temperature calculation successful.",
-            TemperatureIn = result.TemperatureIn
-        });
-    }
-    catch (Exception ex)
-    {
-        return BadRequest(new { message = ex.Message });
-    }
-}
+            try
+            {
+                var result = await _service.CalTemperatureTNAsync(serial, auditId, gStartNoMain, gEndNoMain, mainFillTimes);
+                return Ok(new
+                {
+                    Message = "Temperature calculation successful.",
+                    TemperatureIn = result.TemperatureIn
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
 
+        // GET: api/Audit/Energy?serial=123&auditId=456
+        [HttpGet("Energy")]
+        public async Task<IActionResult> GetEnergy([FromQuery] string? serial, [FromQuery] string? auditId)
+        {
+            try
+            {
+                double energy = await _service.CalEnergyAsync(serial, auditId);
+                return Ok(new { EnergyKWh = energy });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
+        }
+
+        [HttpGet("FinalRinse")]
+        public async Task<IActionResult> GetFinalRinse(
+       string? serial,
+       string? auditId,
+       [FromQuery] int[] gStartNoMain,
+       int mainFillTimes)
+        {
+            if (gStartNoMain == null || gStartNoMain.Length < mainFillTimes)
+            {
+                return BadRequest("Invalid start sample numbers provided.");
+            }
+
+            try
+            {
+                var finalRinseResult = await _service.CalFinalRinseANAsync(
+                    serial,
+                    auditId,
+                    gStartNoMain,
+                    mainFillTimes
+                );
+
+                // Return as JSON
+                return Ok(new
+                {
+                    Values = finalRinseResult.Values
+                });
+            }
+            catch (Exception ex)
+            {
+                // Log the exception (optional)
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("Voltage")]
+        public async Task<ActionResult<double>> GetVoltageAsync(
+         [FromQuery] string? serial,
+         [FromQuery] string? auditId)
+        {
+            try
+            {
+                var voltage = await _service.CalVoltAsync(serial, auditId);
+                return Ok(voltage);
+            }
+            catch (Exception ex)
+            {
+                // Log error if needed
+                return StatusCode(500, $"Error calculating voltage: {ex.Message}");
+            }
+        }
 
         [HttpGet("RunFullCalculation")]
         public async Task<IActionResult> RunFullCalculation(string? serial, string? auditId)
@@ -195,9 +260,9 @@ public async Task<IActionResult> CalTemperatureTN(
                 // mainFillTimes find by look in the fillResult.TimedFills if data in array > 0 count 1
                 var mainFillTimes = 0;
 
-                 var TemperStrS = new List<int>();
-                 var TemperEndS = new List<int>();
-                         
+                var TemperStrS = new List<int>();
+                var TemperEndS = new List<int>();
+
                 var fillRanges = new List<(int start, int end)>();
                 for (int i = 0; i < fillResult.MainFillIndicators.Count; i++)
                 {
@@ -209,12 +274,12 @@ public async Task<IActionResult> CalTemperatureTN(
                         mainFillTimes++;
                     }
                 }
-                for (int i =1; i<TemperStrS.Count;i++)
+                for (int i = 1; i < TemperStrS.Count; i++)
                 {
                     TemperEndS.Add(TemperStrS[i]);
                     if ((i + 1) == TemperStrS.Count)
                         TemperEndS.Add(9999);
-                } 
+                }
                 // Call the calculation service
                 double fvfrValue = await _service.CalFVFRNAsync(serial, auditId, mainFillTimes, fillRanges);
 
@@ -233,22 +298,40 @@ public async Task<IActionResult> CalTemperatureTN(
                     FinalRinseTempI = TemperResult.TemperatureIn[mainFillTimes - 1];
                 else
                     FinalRinseTempI = TemperResult.TemperatureIn[mainFillTimes];
-                    // Step 5: Return combined result
-                    return Ok(new
-                    {
-                        SampleRuns = sampleRuns,
-                        TimedFills = fillResult.TimedFills,
-                        FinalFills = fillResult.FinalFills,
-                        MainFillIndicators = fillResult.MainFillIndicators,
-                        FillVolume = fillVolumeI,
-                        FVFR = fvfrValue,
-                        IncomingWaterTemperature = IncomingWaterTemp,
-                        HeatUpRateCPerS = heatUpRate,
-                        cycleTime = cycleTime,
-                        MainWashTemp = MainWashTempI,
-                        FinalRinseTemp = FinalRinseTempI
 
-                    });
+                double energy = await _service.CalEnergyAsync(serial, auditId);
+
+                var finalRinseResult = await _service.CalFinalRinseANAsync(
+             serial,
+             auditId,
+             TemperStrS.ToArray(),
+             mainFillTimes
+         );
+
+                double MainWashAmperageI = finalRinseResult.Values[0];
+                double FinalRinseAmperageI = finalRinseResult.Values[mainFillTimes - 1];
+
+                var voltage = await _service.CalVoltAsync(serial, auditId);
+                // Step 5: Return combined result
+                return Ok(new
+                {
+                    SampleRuns = sampleRuns,
+                    TimedFills = fillResult.TimedFills,
+                    FinalFills = fillResult.FinalFills,
+                    MainFillIndicators = fillResult.MainFillIndicators,
+                    FillVolume = fillVolumeI,
+                    FVFR = fvfrValue,
+                    IncomingWaterTemperature = IncomingWaterTemp,
+                    HeatUpRateCPerS = heatUpRate,
+                    cycleTime = cycleTime,
+                    MainWashTemp = MainWashTempI,
+                    FinalRinseTemp = FinalRinseTempI,
+                    EnergyKWh = energy,
+                    MainWashAmperage = MainWashAmperageI,
+                    FinalRinseAmperage = FinalRinseAmperageI,
+                    Voltage = voltage
+
+                });
             }
             catch (Exception ex)
             {
@@ -256,7 +339,7 @@ public async Task<IActionResult> CalTemperatureTN(
             }
         }
 
-       
+
 
 
 

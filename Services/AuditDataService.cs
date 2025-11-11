@@ -538,6 +538,123 @@ public async Task<TemperatureResult> CalTemperatureTNAsync(
 
     return result;
 }
+public async Task<double> CalEnergyAsync(string? serial, string? auditId)
+{
+    using var conn = await GetOpenConnectionAsync();
+
+    // SQL with parameter placeholders only
+    string sql = @"
+SELECT MAX(CAST(PowerUsage AS FLOAT)) AS Energy
+FROM cfa_data_excel
+WHERE auditid = @AuditId";
+
+    await using var cmd = conn.CreateCommand();
+    cmd.CommandText = sql;
+
+    // Determine the AuditId parameter safely
+    if (!string.IsNullOrWhiteSpace(auditId))
+    {
+        cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+    }
+    else
+    {
+        // Use a subquery to get the latest AuditID by Serial
+        cmd.CommandText = @"
+SELECT MAX(CAST(PowerUsage AS FLOAT)) AS Energy
+FROM cfa_data_excel
+WHERE auditid = (SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)";
+        cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+    }
+
+    var result = await cmd.ExecuteScalarAsync();
+
+    return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
+}
+
+
+public async Task<FinalRinseA> CalFinalRinseANAsync(
+    string? serial,
+    string? auditId,
+    int[] gStartNoMain,
+    int mainFillTimes)
+{
+    var result = new FinalRinseA(mainFillTimes);
+
+    using var conn = await GetOpenConnectionAsync();
+
+    for (int i = 0; i < mainFillTimes; i++)
+    {
+        // Determine sample range dynamically
+        int startNo = gStartNoMain[i];
+        int endNo = (i + 1 < gStartNoMain.Length) ? gStartNoMain[i + 1] : 9999;
+
+        string sql = $@"
+WITH basedata AS (
+    SELECT ROW_NUMBER() OVER(ORDER BY seconds ASC) AS SampleRun,
+           seconds, voltage, [current], [power],
+           powerusage, waterusage, temperature,
+           waterpressure, watertemperature
+    FROM cfa_data_excel
+    WHERE auditid = {(string.IsNullOrEmpty(auditId)
+            ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+            : "@AuditId")}
+),
+AMPMAX AS (
+    SELECT 
+        CAST(waterusage AS FLOAT) * (
+            -0.00000001 * POWER(CAST(watertemperature AS FLOAT), 3) +
+             0.000006 * POWER(CAST(watertemperature AS FLOAT), 2) +
+            -0.00002 * CAST(watertemperature AS FLOAT) + 1
+        ) AS TempComp,
+        basedata.seconds,
+        basedata.[current],
+        basedata.SampleRun
+    FROM basedata
+    WHERE basedata.SampleRun BETWEEN @StartNo AND @EndNo
+)
+SELECT MAX([current]) FROM AMPMAX;";
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        if (string.IsNullOrEmpty(auditId))
+            cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+        else
+            cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+
+        cmd.Parameters.Add(new SqlParameter("@StartNo", startNo));
+        cmd.Parameters.Add(new SqlParameter("@EndNo", endNo));
+
+        var scalarResult = await cmd.ExecuteScalarAsync();
+        result[i] = scalarResult != null && scalarResult != DBNull.Value
+            ? Convert.ToDouble(scalarResult)
+            : 0.0;
+    }
+
+    return result;
+}
+public async Task<double> CalVoltAsync(string? serial, string? auditId)
+{
+    using var conn = await GetOpenConnectionAsync();
+
+    string sql = $@"
+SELECT AVG(CAST(Voltage AS FLOAT))
+FROM cfa_data_excel
+WHERE auditid = {(string.IsNullOrEmpty(auditId)
+        ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+        : "@AuditId")}";
+
+    await using var cmd = conn.CreateCommand();
+    cmd.CommandText = sql;
+
+    if (string.IsNullOrEmpty(auditId))
+        cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+    else
+        cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+
+    var result = await cmd.ExecuteScalarAsync();
+    return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
+}
 
     }
 }
