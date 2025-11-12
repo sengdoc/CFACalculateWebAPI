@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CFA Calculation Results</title>
+
+        <link rel="stylesheet" href="/css/GetDataCFA.css">
+        <script src="/lib/chart.js/Chart.min.js"></script>
+        
+</head>
+<body>
+
+<h1>
+  <img src="/Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
+  CFA Calculation Results
+</h1>
+
+<div class="card">
+
+    <!-- Input -->
+    <div style="text-align:center; margin-bottom: 20px;">
+        <label for="auditInput"><strong>Enter Audit ID:</strong></label>
+        <input type="text" id="auditInput" placeholder="e.g. 1461" />
+        <button onclick="loadResults()" id="loadBtn">Load Data</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay">
+        <div class="spinner">
+            <img src="/Img/FPALogo.png" alt="logo">
+        </div>
+        <p style="margin-top:15px; font-weight:bold; color:#2c3e50;">Processing... Please wait</p>
+    </div>
+
+    <!-- Table -->
+    <h2>Sample Runs</h2>
+    <table id="sampleRunsTable">
+        <thead>
+            <tr>
+                <th>Run No</th>
+                <th>Start Sample</th>
+                <th>End Sample</th>
+                <th>Timed Fill (s)</th>
+                <th>Final Fill</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <!-- Summary -->
+    <h2>Summary</h2>
+    <div class="summary" id="summaryCards"></div>
+
+    <!-- Chart -->
+    <h2>Fill Chart</h2>
+    <canvas id="fillChart" height="150"></canvas>
+
+    <div class="error" id="errorMessage"></div>
+</div>
+
+<script>
+async function loadResults() {
+    const auditId = document.getElementById("auditInput").value.trim();
+    const errorMessage = document.getElementById("errorMessage");
+    const overlay = document.getElementById("loadingOverlay");
+    const btn = document.getElementById("loadBtn");
+
+    if (!auditId) {
+        errorMessage.textContent = "Please enter an Audit ID.";
+        return;
+    }
+
+    overlay.style.display = "flex";
+    btn.disabled = true;
+    errorMessage.textContent = "";
+
+    const apiUrl = `/api/CFACal/RunFullCalculation?auditId=${auditId}`;
+
+    try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`API returned status ${response.status}`);
+        const data = await response.json();
+
+        if (!data.sampleRuns || !data.timedFills || !data.finalFills) {
+            throw new Error("API returned incomplete data");
+        }
+
+        // --- Fill Table ---
+        const tbody = document.querySelector("#sampleRunsTable tbody");
+        tbody.innerHTML = "";
+        data.sampleRuns.forEach((run, index) => {
+            const tr = document.createElement("tr");
+            if (data.timedFills[index] === 0 && data.finalFills[index] === 0)
+                tr.classList.add("zero-fill");
+
+            tr.innerHTML = `
+                <td>${run.runNo}</td>
+                <td>${run.startSampleRun}</td>
+                <td>${run.endSampleRun}</td>
+                <td>${data.timedFills[index]}</td>
+                <td>${data.finalFills[index]}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // --- Summary ---
+        const summaryContainer = document.getElementById("summaryCards");
+        summaryContainer.innerHTML = "";
+        const summaryItems = {
+            "Total Fill Volume": data.fillVolume,
+            "FVFR": data.fvfr,
+            "Incoming Water Temp (°C)": data.incomingWaterTemperature,
+            "Final Rinse Temp (°C)": data.finalRinseTemp,
+            "Heat Up Rate (°C/s)": data.heatUpRateCPerS,
+            "Cycle Time (s)": data.cycleTime,
+            "Energy (kWh)": data.energyKWh,
+            "Main Wash Amperage (A)": data.mainWashAmperage,
+            "Final Rinse Amperage (A)": data.finalRinseAmperage,
+            "Voltage (V)": data.voltage
+        };
+        for (const [key, value] of Object.entries(summaryItems)) {
+            const div = document.createElement("div");
+            div.innerHTML = `<strong>${key}</strong><br>${value ?? "-"}`;
+            summaryContainer.appendChild(div);
+        }
+
+        // --- Chart ---
+        const ctx = document.getElementById("fillChart").getContext("2d");
+        if (window.fillChartInstance) window.fillChartInstance.destroy();
+        window.fillChartInstance = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: data.sampleRuns.map(r => `Run ${r.runNo}`),
+                datasets: [
+                    {
+                        label: "Timed Fill (s)",
+                        data: data.timedFills,
+                        backgroundColor: "rgba(52,152,219,0.6)"
+                    },
+                    {
+                        label: "Final Fill",
+                        data: data.finalFills,
+                        backgroundColor: "rgba(46,204,113,0.6)"
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: "top" }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+        errorMessage.textContent = "Failed to load results: " + err.message;
+    } finally {
+        overlay.style.display = "none";
+        btn.disabled = false;
+    }
+}
+
+// Press Enter to submit
+document.getElementById("auditInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") loadResults();
+});
+</script>
+
+</body>
+</html>
