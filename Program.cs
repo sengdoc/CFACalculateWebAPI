@@ -40,22 +40,26 @@ app.UseRouting();
 app.UseAuthorization();
 
 // Serve static files
-app.UseDefaultFiles();   // optional, for index.html at root
+app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Swagger - only in development
-if (app.Environment.IsDevelopment())
+// ----------------------
+// Swagger (always enabled, works under virtual directory)
+// ----------------------
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CFA Calculate API v1");
-        c.RoutePrefix = "."; // Open Swagger at root
-    });
-}
+    // Include virtual directory name here
+    c.SwaggerEndpoint("/DDCFACAL_API/swagger/v1/swagger.json", "CFA Calculate API v1");
+    c.RoutePrefix = "swagger";  // Swagger UI will be at /DDCFACAL_API/swagger
+});
 
+// ----------------------
 // Map controllers
+// ----------------------
 app.MapControllers();
 
+// ----------------------
 // Run the app
+// ----------------------
 app.Run();
