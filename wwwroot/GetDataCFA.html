@@ -5,14 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CFA Calculation Results</title>
 
-        <link rel="stylesheet" href="/css/GetDataCFA.css">
-        <script src="/lib/chart.js/Chart.min.js"></script>
-        
+        <link rel="stylesheet" href="./css/GetDataCFA.css">
+        <script src="./lib/chart.js/Chart.min.js"></script>        
 </head>
 <body>
 
 <h1>
-  <img src="/Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
+  <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
   CFA Calculation Results
 </h1>
 
@@ -28,7 +27,7 @@
     <!-- Loading Overlay -->
     <div id="loadingOverlay">
         <div class="spinner">
-            <img src="/Img/FPALogo.png" alt="logo">
+            <img src="./Img/FPALogo.png" alt="logo">
         </div>
         <p style="margin-top:15px; font-weight:bold; color:#2c3e50;">Processing... Please wait</p>
     </div>
@@ -75,7 +74,7 @@ async function loadResults() {
     btn.disabled = true;
     errorMessage.textContent = "";
 
-    const apiUrl = `/api/CFACal/RunFullCalculation?auditId=${auditId}`;
+    const apiUrl = `./api/CFACal/RunFullCalculation?auditId=${auditId}`;
 
     try {
         const response = await fetch(apiUrl);

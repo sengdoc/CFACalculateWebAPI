@@ -50,7 +50,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "CFA Calculate API v1");
-        c.RoutePrefix = ""; // Open Swagger at root
+        c.RoutePrefix = "."; // Open Swagger at root
     });
 }
 
