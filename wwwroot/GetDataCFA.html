@@ -48,7 +48,9 @@
     </table>
 
     <!-- Summary -->
-    <h2>Summary</h2>
+    <h2>Summarys</h2>
+    
+    <label id="SerialNo"></label>
     <div class="summary" id="summaryCards"></div>
 
     <!-- Chart -->
@@ -80,6 +82,9 @@ async function loadResults() {
         const response = await fetch(apiUrl);
         if (!response.ok) throw new Error(`API returned status ${response.status}`);
         const data = await response.json();
+
+        let SerialNoLab = document.getElementById("SerialNo");
+        SerialNoLab.innerHTML = `<span style="color:darkolivegreen;font-weight:bold" >${data.serialNo}</span>`;
 
         if (!data.sampleRuns || !data.timedFills || !data.finalFills) {
             throw new Error("API returned incomplete data");

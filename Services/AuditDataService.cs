@@ -122,7 +122,31 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
 
             return results;
         }
+        // Check S/N by AuditID  
+        public async Task<string> CheckSNNoByAuditIdAsync(string? auditId)
+        {
+            string results = string.Empty;
 
+            // Build SQL like Delphi
+            var sql = @"SELECT TOP 1 p.part,ad.Serial,p.description FROM Audit ad
+                      inner join serial_track st on st.serial = ad.Serial 
+                      inner join part p on p.part = st.part 
+                      WHERE AuditID = @AuditID";
+            using var conn = await GetOpenConnectionAsync();
+
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            cmd.Parameters.Add(new SqlParameter("@AuditID", auditId!));
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results = reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2);
+            }
+            return results;
+        }
         // Calculate Timed Final Fills
         public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
         {

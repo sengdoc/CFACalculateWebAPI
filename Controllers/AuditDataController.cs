@@ -25,9 +25,11 @@ namespace CFACalculateWebAPI.Controllers
 public async Task<IActionResult> RunFullCalculation(string? serial, string? auditId)
 {
     try
-    {
-        // Step 1: Initialize sample runs
-        var sampleRuns = await _service.InitSampleRunNoAsync(serial, auditId);
+            {           //Check Serial No
+                string SerialNo = await _service.CheckSNNoByAuditIdAsync(auditId);
+
+                // Step 1: Initialize sample runs
+                var sampleRuns = await _service.InitSampleRunNoAsync(serial, auditId);
         if (!sampleRuns.Any())
             return BadRequest(new { message = "No sample runs found." });
 
@@ -87,6 +89,7 @@ public async Task<IActionResult> RunFullCalculation(string? serial, string? audi
         // Step 7: Return combined results
         return Ok(new
         {
+            SerialNo = SerialNo,
             SampleRuns = sampleRuns,
             TimedFills = fillResult.TimedFills,
             FinalFills = fillResult.FinalFills,
