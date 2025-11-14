@@ -24,7 +24,7 @@ namespace CFACalculateWebAPI.Controllers
 [HttpGet("RunFullCalculation")]
 public async Task<IActionResult> RunFullCalculation(string? serial, string? auditId)
 {
-    try
+    try   
             {           //Check Serial No
                 string SerialNo = await _service.CheckSNNoByAuditIdAsync(auditId);
 
