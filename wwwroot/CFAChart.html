@@ -1,0 +1,304 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFA Dashboard</title>
+
+    <script src="./lib/chart.js/Chart.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 img {
+            height: 50px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+
+        input {
+            padding: 8px;
+            width: 150px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 16px;
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+            button:hover {
+                background: #2980b9;
+            }
+
+        /* KPI cards */
+        .kpi-box {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            display: inline-block;
+            width: 180px;
+            text-align: center;
+        }
+
+        .kpi-value {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+
+        th {
+            background: #f1f1f1;
+        }
+
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.75);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+            flex-direction: column;
+        }
+
+        .loader {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Loading UI -->
+    <div id="loadingOverlay">
+        <div class="loader"></div>
+        <p style="color:#333; margin-top:12px; font-size:18px;">Loading... please wait</p>
+    </div>
+
+    <h1>
+        <img src="./Img/FPALogo.png">
+        CFA Dashboard
+    </h1>
+
+    <div>
+        <label><strong>Audit ID:</strong></label>
+        <input type="text" id="auditInput" placeholder="e.g. 1461">
+        <button onclick="loadResults()">Load</button>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="kpiContainer"></div>
+    <!-- Table -->
+    <table id="resultsTable"></table>
+    <!-- Chart -->
+    <canvas id="limitChart" height="120"></canvas>
+
+
+
+
+    <script>
+        /* ----------------- LOADING UI ----------------- */
+        function showLoading() {
+            document.getElementById("loadingOverlay").style.display = "flex";
+        }
+        function hideLoading() {
+            document.getElementById("loadingOverlay").style.display = "none";
+        }
+
+        /* Safe array access */
+        function safeArray(arr, index) {
+            return (arr && arr.length > index) ? arr[index] : 0;
+        }
+
+        let chartInstance = null;
+
+        /* ----------------- LOAD DATA ----------------- */
+        async function loadResults() {
+            const auditId = document.getElementById("auditInput").value.trim();
+            if (!auditId) return alert("Please enter Audit ID");
+
+            showLoading();
+
+            try {
+                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${auditId}`);
+                const data = await response.json();
+
+                renderKPIs(data);
+                renderTable(data);
+                renderChart(data);
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                console.error(err);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        /* ----------------- KPI CARDS ----------------- */
+        function renderKPIs(data) {
+            const total = data.partLimits.length;
+            const pass = data.partLimits.filter(x => {
+                const actual = classMapping(x.class, data);
+                return (x.lowerLimit <= actual && actual <= x.upperLimit);
+            }).length;
+            const fail = total - pass;
+
+            const container = document.getElementById("kpiContainer");
+            container.innerHTML = `
+                <div class="kpi-box">
+                    <div>Total Tests</div>
+                    <div class="kpi-value">${total}</div>
+                </div>
+                <div class="kpi-box">
+                    <div>Passed</div>
+                    <div class="kpi-value" style="color:green">${pass}</div>
+                </div>
+                <div class="kpi-box">
+                    <div>Failed</div>
+                    <div class="kpi-value" style="color:red">${fail}</div>
+                </div>
+            `;
+        }
+
+        /* ----------------- CLASS → VALUE MAP ----------------- */
+        function classMapping(className, data) {
+            const map = {
+                "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
+                "TS_CFA_FVFR": data.fvfr ?? 0,
+                "TS_CFA_FVOL": data.fillVolume ?? 0,
+                "TS_CFA_FT1": safeArray(data.timedFills, 0),
+                "TS_CFA_FT2": safeArray(data.timedFills, 1),
+                "TS_CFA_FT3": safeArray(data.timedFills, 2),
+                "TS_CFA_FT4": safeArray(data.timedFills, 3),
+                "TS_CFA_FT5": safeArray(data.timedFills, 4),
+                "TS_CFA_FF1": safeArray(data.finalFills, 0),
+                "TS_CFA_FF2": safeArray(data.finalFills, 1),
+                "TS_CFA_FF3": safeArray(data.finalFills, 2),
+                "TS_CFA_FF4": safeArray(data.finalFills, 3),
+                "TS_CFA_FF5": safeArray(data.finalFills, 4),
+                "TS_CFA_MWT": data.mainWashTemp ?? 0,
+                "TS_CFA_FNT": data.finalRinseTemp ?? 0,
+                "TS_CFA_ENER": data.energyKWh ?? 0,
+                "TS_CFA_HEATUP": data.heatUpRateCPerS ?? 0,
+                "TS_CFA_VOLT": data.voltage ?? 0,
+                "TS_CFA_MWA": data.mainWashAmperage ?? 0,
+                "TS_CFA_FRA": data.finalRinseAmperage ?? 0,
+                "TS_CFA_CTIME": data.cycleTime ?? 0
+            };
+            return map[className] ?? 0;
+        }
+
+        /* ----------------- TABLE ----------------- */
+        function renderTable(data) {
+            const table = document.getElementById("resultsTable");
+            table.innerHTML = "";
+
+            const header = table.insertRow();
+            ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => {
+                const th = document.createElement("th");
+                th.textContent = h;
+                header.appendChild(th);
+            });
+
+            data.partLimits.forEach(item => {
+                const actual = classMapping(item.class, data);
+                const row = table.insertRow();
+
+                const cells = [
+                    item.part,
+                    item.class,
+                    item.description,
+                    item.lowerLimit,
+                    actual,
+                    item.upperLimit
+                ];
+
+                cells.forEach(val => {
+                    const td = row.insertCell();
+                    td.textContent = val;
+                });
+
+                if (actual < item.lowerLimit || actual > item.upperLimit) {
+                    row.style.background = "#f8d7da"; // fail
+                } else {
+                    row.style.background = "#d4edda"; // pass
+                }
+            });
+        }
+
+        /* ----------------- CHART ----------------- */
+        function renderChart(data) {
+            const labels = data.partLimits.map(x => x.class);
+            const actual = data.partLimits.map(x => classMapping(x.class, data));
+            const lower = data.partLimits.map(x => x.lowerLimit);
+            const upper = data.partLimits.map(x => x.upperLimit);
+
+            if (chartInstance) chartInstance.destroy();
+
+            const ctx = document.getElementById("limitChart");
+            chartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        { label: "Actual", data: actual, backgroundColor: "#3498db" },
+                        { label: "Lower", data: lower, type: "line", borderColor: "green", fill: false },
+                        { label: "Upper", data: upper, type: "line", borderColor: "red", fill: false }
+                    ]
+                }
+            });
+        }
+    </script>
+
+</body>
+</html>

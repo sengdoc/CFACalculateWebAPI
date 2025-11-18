@@ -1,180 +1,168 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CFA Calculation Results</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFA Calculation Results with Limits</title>
+    <link rel="stylesheet" href="./css/GetDataCFA.css">
+    <script src="./lib/chart.js/Chart.min.js"></script>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
 
-        <link rel="stylesheet" href="./css/GetDataCFA.css">
-        <script src="./lib/chart.js/Chart.min.js"></script>        
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f4f4f4;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .spinner img {
+            height: 50px;
+        }
+    </style>
 </head>
 <body>
 
-<h1>
-  <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
-  CFA Calculation Results
-</h1>
+    <h1>
+        <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
+        CFA Calculation Results
+    </h1>
 
-<div class="card">
-
-    <!-- Input -->
-    <div style="text-align:center; margin-bottom: 20px;">
+    <div>
         <label for="auditInput"><strong>Enter Audit ID:</strong></label>
-        <input type="text" id="auditInput" placeholder="e.g. 1461" />
+        <input type="text" id="auditInput" placeholder="e.g. 1461">
         <button onclick="loadResults()" id="loadBtn">Load Data</button>
     </div>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay">
+    <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">
+            <p style="color:white; font-weight:bold;">Processing... Please wait</p>
         </div>
-        <p style="margin-top:15px; font-weight:bold; color:#2c3e50;">Processing... Please wait</p>
     </div>
 
-    <!-- Table -->
-    <h2>Sample Runs</h2>
-    <table id="sampleRunsTable">
-        <thead>
-            <tr>
-                <th>Run No</th>
-                <th>Start Sample</th>
-                <th>End Sample</th>
-                <th>Timed Fill (s)</th>
-                <th>Final Fill</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <h2>Audit Results with Limits</h2>
+    <table id="resultsTable"></table>
 
-    <!-- Summary -->
-    <h2>Summarys</h2>
-    
-    <label id="SerialNo"></label>
-    <div class="summary" id="summaryCards"></div>
-
-    <!-- Chart -->
-    <h2>Fill Chart</h2>
-    <canvas id="fillChart" height="150"></canvas>
-
-    <div class="error" id="errorMessage"></div>
-</div>
-
-<script>
-async function loadResults() {
-    const auditId = document.getElementById("auditInput").value.trim();
-    const errorMessage = document.getElementById("errorMessage");
-    const overlay = document.getElementById("loadingOverlay");
-    const btn = document.getElementById("loadBtn");
-
-    if (!auditId) {
-        errorMessage.textContent = "Please enter an Audit ID.";
-        return;
-    }
-
-    overlay.style.display = "flex";
-    btn.disabled = true;
-    errorMessage.textContent = "";
-
-    const apiUrl = `./api/CFACal/RunFullCalculation?auditId=${auditId}`;
-
-    try {
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`API returned status ${response.status}`);
-        const data = await response.json();
-
-        let SerialNoLab = document.getElementById("SerialNo");
-        SerialNoLab.innerHTML = `<span style="color:darkolivegreen;font-weight:bold" >${data.serialNo}</span>`;
-
-        if (!data.sampleRuns || !data.timedFills || !data.finalFills) {
-            throw new Error("API returned incomplete data");
+    <script>
+        // Helper function for safe array access
+        function safeArray(arr, index) {
+            return (arr && arr.length > index) ? arr[index] : 0;
         }
 
-        // --- Fill Table ---
-        const tbody = document.querySelector("#sampleRunsTable tbody");
-        tbody.innerHTML = "";
-        data.sampleRuns.forEach((run, index) => {
-            const tr = document.createElement("tr");
-            if (data.timedFills[index] === 0 && data.finalFills[index] === 0)
-                tr.classList.add("zero-fill");
+        async function loadResults() {
+            const auditId = document.getElementById("auditInput").value.trim();
+            const overlay = document.getElementById("loadingOverlay");
+            const btn = document.getElementById("loadBtn");
 
-            tr.innerHTML = `
-                <td>${run.runNo}</td>
-                <td>${run.startSampleRun}</td>
-                <td>${run.endSampleRun}</td>
-                <td>${data.timedFills[index]}</td>
-                <td>${data.finalFills[index]}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        // --- Summary ---
-        const summaryContainer = document.getElementById("summaryCards");
-        summaryContainer.innerHTML = "";
-        const summaryItems = {
-            "Total Fill Volume": data.fillVolume,
-            "FVFR": data.fvfr,
-            "Incoming Water Temp (°C)": data.incomingWaterTemperature,
-            "MainWash Temp (°C)": data.mainWashTemp,
-            "Final Rinse Temp (°C)": data.finalRinseTemp,
-            "Heat Up Rate (°C/s)": data.heatUpRateCPerS,
-            "Cycle Time (s)": data.cycleTime,
-            "Energy (kWh)": data.energyKWh,
-            "Main Wash Amperage (A)": data.mainWashAmperage,
-            "Final Rinse Amperage (A)": data.finalRinseAmperage,
-            "Voltage (V)": data.voltage
-        };
-        for (const [key, value] of Object.entries(summaryItems)) {
-            const div = document.createElement("div");
-            div.innerHTML = `<strong>${key}</strong><br>${value ?? "-"}`;
-            summaryContainer.appendChild(div);
-        }
-
-        // --- Chart ---
-        const ctx = document.getElementById("fillChart").getContext("2d");
-        if (window.fillChartInstance) window.fillChartInstance.destroy();
-        window.fillChartInstance = new Chart(ctx, {
-            type: "bar",
-            data: {
-                labels: data.sampleRuns.map(r => `Run ${r.runNo}`),
-                datasets: [
-                    {
-                        label: "Timed Fill (s)",
-                        data: data.timedFills,
-                        backgroundColor: "rgba(52,152,219,0.6)"
-                    },
-                    {
-                        label: "Final Fill",
-                        data: data.finalFills,
-                        backgroundColor: "rgba(46,204,113,0.6)"
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: "top" }
-                },
-                scales: {
-                    y: { beginAtZero: true }
-                }
+            if (!auditId) {
+                alert("Please enter an Audit ID.");
+                return;
             }
+
+            overlay.style.display = "flex";
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${auditId}`);
+                if (!response.ok) throw new Error(`API returned ${response.status}`);
+                const data = await response.json();
+
+                // Use lowercase first letters for properties
+                const classMapping = {
+                    "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
+                    "TS_CFA_FVFR": data.fvfr ?? 0,
+                    "TS_CFA_FVOL": data.fillVolume ?? 0,
+                    "TS_CFA_FT1": safeArray(data.timedFills, 0),
+                    "TS_CFA_FT2": safeArray(data.timedFills, 1),
+                    "TS_CFA_FT3": safeArray(data.timedFills, 2),
+                    "TS_CFA_FT4": safeArray(data.timedFills, 3),
+                    "TS_CFA_FT5": safeArray(data.timedFills, 4),
+                    "TS_CFA_FF1": safeArray(data.finalFills, 0),
+                    "TS_CFA_FF2": safeArray(data.finalFills, 1),
+                    "TS_CFA_FF3": safeArray(data.finalFills, 2),
+                    "TS_CFA_FF4": safeArray(data.finalFills, 3),
+                    "TS_CFA_FF5": safeArray(data.finalFills, 4),
+                    "TS_CFA_MWT": data.mainWashTemp ?? 0,
+                    "TS_CFA_FNT": data.finalRinseTemp ?? 0,
+                    "TS_CFA_ENER": data.energyKWh ?? 0,
+                    "TS_CFA_HEATUP": data.heatUpRateCPerS ?? 0,
+                    "TS_CFA_VOLT": data.voltage ?? 0,
+                    "TS_CFA_MWA": data.mainWashAmperage ?? 0,
+                    "TS_CFA_FRA": data.finalRinseAmperage ?? 0,
+                    "TS_CFA_CTIME": data.cycleTime ?? 0
+                };
+
+                const table = document.getElementById("resultsTable");
+                table.innerHTML = "";
+
+                // Table header
+                const header = table.insertRow();
+                ["Part", "Class", "Description", "Lower Limit", "Actual", "Upper Limit"].forEach(text => {
+                    const th = document.createElement("th");
+                    th.textContent = text;
+                    header.appendChild(th);
+                });
+
+                // Populate rows (taskReference removed)
+                data.partLimits.forEach(item => {
+                    const actualValue = classMapping[item.class] ?? 0;
+                    const row = table.insertRow();
+
+                    [
+                        item.part ?? "-",
+                        item.class ?? "-",
+                        item.description ?? "-",
+                        item.lowerLimit ?? "-",
+                        actualValue,
+                        item.upperLimit ?? "-"
+                    ].forEach(val => {
+                        const cell = row.insertCell();
+                        cell.textContent = val;
+                    });
+
+                    if ((item.lowerLimit !== null && actualValue < item.lowerLimit) ||
+                        (item.upperLimit !== null && actualValue > item.upperLimit)) {
+                        row.style.backgroundColor = "#f8d7da";  // fail
+                    } else {
+                        row.style.backgroundColor = "#d4edda";  // pass
+                    }
+                });
+
+
+            } catch (err) {
+                console.error(err);
+                alert("Failed to load results: " + err.message);
+            } finally {
+                overlay.style.display = "none";
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById("auditInput").addEventListener("keydown", e => {
+            if (e.key === "Enter") loadResults();
         });
-
-    } catch (err) {
-        console.error(err);
-        errorMessage.textContent = "Failed to load results: " + err.message;
-    } finally {
-        overlay.style.display = "none";
-        btn.disabled = false;
-    }
-}
-
-// Press Enter to submit
-document.getElementById("auditInput").addEventListener("keydown", e => {
-    if (e.key === "Enter") loadResults();
-});
-</script>
+    </script>
 
 </body>
 </html>

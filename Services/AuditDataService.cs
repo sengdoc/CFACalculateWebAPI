@@ -123,9 +123,9 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             return results;
         }
         // Check S/N by AuditID  
-        public async Task<string> CheckSNNoByAuditIdAsync(string? auditId)
+        public async Task<string[]> CheckSNNoByAuditIdAsync(string? auditId)
         {
-            string results = string.Empty;
+            var resultList = new List<string>();
 
             // Build SQL like Delphi
             var sql = @"SELECT TOP 1 p.part,ad.Serial,p.description FROM Audit ad
@@ -143,9 +143,10 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                results = reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2);
+                resultList.Add(reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2));
+                resultList.Add(reader.GetString(0));
             }
-            return results;
+            return resultList.ToArray();
         }
         // Calculate Timed Final Fills
         public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
@@ -679,6 +680,76 @@ WHERE auditid = {(string.IsNullOrEmpty(auditId)
     var result = await cmd.ExecuteScalarAsync();
     return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
 }
+
+
+        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string task)
+        {
+            var limits = new List<PartLimit>();
+
+            using var conn = await GetOpenConnectionAsync();
+
+            string sql = @"
+SELECT DISTINCT
+    p.part,
+    p.class,
+    p.description,
+    ps.task_reference,
+     IIF(
+        p.class NOT IN ('TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER'),
+        CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000,
+        pt.lower_limit_value
+    ) AS lower_limit_k,
+    IIF(
+        p.class NOT IN ('TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER'),
+        CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000,
+        pt.upper_limit_value
+    ) AS upper_limit_k
+FROM part_structure ps
+INNER JOIN part p ON ps.component = p.part
+INNER JOIN part_issue pii ON pii.part = p.part
+INNER JOIN part_structure ps2 ON ps2.component = ps.part
+INNER JOIN part_test pt ON ps.component = pt.part AND pt.part_issue = pii.part_issue
+WHERE ps2.part = @ParentPart
+  AND ps2.task = @Task
+  AND ps.eff_start <= GETDATE()
+  AND ps.eff_close >= GETDATE()
+  AND pii.eff_start <= GETDATE()
+  AND pii.eff_close >= GETDATE()
+  AND ps2.eff_start <= GETDATE()
+  AND ps2.eff_close >= GETDATE()
+  AND p.class IN ('TS_CFA_INWT', 'TS_CFA_FVFR', 'TS_CFA_FVOL', 'TS_CFA_FT1',
+                  'TS_CFA_FT2', 'TS_CFA_FT3', 'TS_CFA_FT4', 'TS_CFA_FT5',
+                  'TS_CFA_FF1', 'TS_CFA_FF2', 'TS_CFA_FF3', 'TS_CFA_FF4',
+                  'TS_CFA_FF5', 'TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER',
+                  'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA')
+ORDER BY ps.task_reference;";
+
+
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.Add(new SqlParameter("@ParentPart", parentPart));
+            cmd.Parameters.Add(new SqlParameter("@Task", task));
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                limits.Add(new PartLimit
+                {
+                    Part = reader.IsDBNull(0) ? null : reader.GetString(0),
+                    Class = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    Description = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    TaskReference = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    LowerLimit = reader.IsDBNull(4) ? (double?)null : (double)reader.GetDecimal(4),
+                    UpperLimit = reader.IsDBNull(5) ? (double?)null : (double)reader.GetDecimal(5),
+
+                });
+            }
+
+            return limits;
+        }
+
+
 
     }
 }
