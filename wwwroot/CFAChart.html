@@ -50,7 +50,6 @@
         <button onclick="exportChart()">Export Chart Image</button>
         <canvas id="limitChart" height="120"></canvas>
     </div>
-
     <script>
         let chartInstance = null;
         let lastData = null;
@@ -62,20 +61,44 @@
         async function loadResults() {
             const id = document.getElementById("auditInput").value.trim();
             if (!id) return alert("Enter Audit ID");
+
             showLoading();
+
             try {
                 const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}`);
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with status ${response.status}`);
+                }
+
                 const data = await response.json();
+
+                // Ensure data.partLimits exists and is an array
+                if (!data || !Array.isArray(data.partLimits)) {
+                    throw new Error("No partLimits data returned from server");
+                }
+
                 lastData = data;
+
                 document.getElementById("productText").innerText = data.dataProduct || "N/A";
+
                 renderKPIs(data);
                 renderTable(data);
                 renderChart(data);
+
             } catch (err) {
-                alert("Error: " + err.message);
                 console.error(err);
+                alert("Error loading data: " + err.message);
                 document.getElementById("productText").innerText = "Error loading product info";
-            } finally { hideLoading(); }
+
+                // Clear previous data if exists
+                lastData = null;
+                document.getElementById("kpiContainer").innerHTML = "";
+                document.getElementById("resultsTable").innerHTML = "";
+                if (chartInstance) chartInstance.destroy();
+            } finally {
+                hideLoading();
+            }
         }
 
         function copyProductInfo() {
@@ -84,6 +107,7 @@
         }
 
         function classMapping(className, data) {
+            if (!data) return 0;
             const map = {
                 "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
                 "TS_CFA_FVFR": data.fvfr ?? 0,
@@ -110,12 +134,20 @@
             return map[className] ?? 0;
         }
 
-        function safeArray(arr, index) { return (arr && arr.length > index) ? arr[index] : 0; }
+        function safeArray(arr, index) {
+            return Array.isArray(arr) && arr.length > index ? arr[index] : 0;
+        }
 
         function renderKPIs(data) {
+            if (!data || !Array.isArray(data.partLimits)) return;
+
             const total = data.partLimits.length;
-            const pass = data.partLimits.filter(x => { const act = classMapping(x.class, data); return x.lowerLimit <= act && act <= x.upperLimit; }).length;
+            const pass = data.partLimits.filter(x => {
+                const act = classMapping(x.class, data);
+                return x.lowerLimit <= act && act <= x.upperLimit;
+            }).length;
             const fail = total - pass;
+
             document.getElementById("kpiContainer").innerHTML = `
                 <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
                 <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
@@ -124,18 +156,20 @@
         }
 
         function renderTable(data) {
+            if (!data || !Array.isArray(data.partLimits)) return;
+
             const table = document.getElementById("resultsTable");
             table.innerHTML = "";
+
             const header = table.insertRow();
             ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => header.insertCell().textContent = h);
 
             data.partLimits.forEach((item, index) => {
                 const actual = classMapping(item.class, data);
                 const row = table.insertRow();
-                [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v);
+                [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v ?? 0);
                 row.style.background = (actual < item.lowerLimit || actual > item.upperLimit) ? "#f8d7da" : "#d4edda";
 
-                // Row click highlight
                 row.addEventListener("click", () => highlightRow(index));
             });
         }
@@ -146,22 +180,25 @@
             for (let i = 1; i < tableRows.length; i++) {
                 tableRows[i].classList.toggle("highlight", i - 1 === index);
             }
-            // Update chart colors
             updateChartColors();
         }
 
         function updateChartColors() {
             if (!chartInstance || !lastData) return;
+
             chartInstance.data.datasets[0].backgroundColor = lastData.partLimits.map((item, i) => {
                 const actual = classMapping(item.class, lastData);
                 const fail = actual < item.lowerLimit || actual > item.upperLimit;
                 if (i === highlightedIndex) return "#f39c12"; // highlighted
                 return fail ? "#e74c3c" : "#3498db";
             });
+
             chartInstance.update();
         }
 
         function renderChart(data) {
+            if (!data || !Array.isArray(data.partLimits)) return;
+
             const labels = data.partLimits.map(x => x.class);
             const actual = data.partLimits.map(x => classMapping(x.class, data));
             const lower = data.partLimits.map(x => x.lowerLimit);
@@ -173,7 +210,8 @@
             chartInstance = new Chart(ctx, {
                 type: "bar",
                 data: {
-                    labels, datasets: [
+                    labels,
+                    datasets: [
                         { label: "Actual", data: actual, backgroundColor: actual.map((v, i) => v < lower[i] || v > upper[i] ? "#e74c3c" : "#3498db") },
                         { label: "Lower Limit", data: lower, type: "line", borderColor: "green", fill: false },
                         { label: "Upper Limit", data: upper, type: "line", borderColor: "red", fill: false }
@@ -198,12 +236,14 @@
         }
 
         function exportTable() {
-            if (!lastData) return;
+            if (!lastData || !Array.isArray(lastData.partLimits)) return;
+
             const rows = [["Part", "Class", "Description", "Lower", "Actual", "Upper"]];
             lastData.partLimits.forEach(item => {
                 const actual = classMapping(item.class, lastData);
                 rows.push([item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit]);
             });
+
             const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
             const link = document.createElement("a");
             link.setAttribute("href", csvContent);
@@ -220,7 +260,7 @@
             link.click();
         }
 
-        // Collapsible
+        // Collapsible panels
         document.querySelectorAll(".collapsible").forEach(btn => {
             btn.addEventListener("click", () => {
                 btn.classList.toggle("active");
@@ -229,5 +269,7 @@
             });
         });
     </script>
+
+
 </body>
 </html>

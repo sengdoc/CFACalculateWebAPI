@@ -79,7 +79,7 @@ namespace CFACalculateWebAPI.Controllers
                 var voltage = await _service.CalVoltAsync(serial, auditId);
 
                 // 5. Get part limits
-                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1],"4625");
+                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2]);
 
                 // 6. Return combined results
                 return Ok(new

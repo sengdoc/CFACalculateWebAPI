@@ -145,6 +145,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             {
                 resultList.Add(reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2));
                 resultList.Add(reader.GetString(0));
+                resultList.Add(reader.GetString(1));
             }
             return resultList.ToArray();
         }
@@ -682,7 +683,7 @@ WHERE auditid = {(string.IsNullOrEmpty(auditId)
 }
 
 
-        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string task)
+        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo)
         {
             var limits = new List<PartLimit>();
 
@@ -694,23 +695,35 @@ SELECT DISTINCT
     p.class,
     p.description,
     ps.task_reference,
-     IIF(
-        p.class NOT IN ('TS_CFA_ENER'),
-        CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000,
-        pt.lower_limit_value
+    IIF(
+        p.class = 'TS_CFA_FVFR',
+        tsl.test_value - 2,
+        IIF(
+            p.class NOT IN ('TS_CFA_ENER'),
+            CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000,
+            pt.lower_limit_value
+        )
     ) AS lower_limit_k,
     IIF(
-        p.class NOT IN ('TS_CFA_ENER'),
-        CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000,
-        pt.upper_limit_value
+        p.class = 'TS_CFA_FVFR',
+        tsl.test_value + 2,
+        IIF(
+            p.class NOT IN ('TS_CFA_ENER'),
+            CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000,
+            pt.upper_limit_value
+        )
     ) AS upper_limit_k
 FROM part_structure ps
 INNER JOIN part p ON ps.component = p.part
 INNER JOIN part_issue pii ON pii.part = p.part
 INNER JOIN part_structure ps2 ON ps2.component = ps.part
 INNER JOIN part_test pt ON ps.component = pt.part AND pt.part_issue = pii.part_issue
+INNER JOIN test_result_lis tsl on tsl.test_part = '595130'
 WHERE ps2.part = @ParentPart
-  AND ps2.task = @Task
+  AND tsl.serial = @Serial
+  AND tsl.test_info1 = 'Top'
+  AND tsl.test_unit_id = 'Celsius'
+  AND ps2.task = 4625
   AND ps.eff_start <= GETDATE()
   AND ps.eff_close >= GETDATE()
   AND pii.eff_start <= GETDATE()
@@ -724,30 +737,32 @@ WHERE ps2.part = @ParentPart
                   'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA')
 ORDER BY ps.task_reference;";
 
-
-
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
+
+            // Only parameters
             cmd.Parameters.Add(new SqlParameter("@ParentPart", parentPart));
-            cmd.Parameters.Add(new SqlParameter("@Task", task));
+            cmd.Parameters.Add(new SqlParameter("@Serial", serialNo));
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 limits.Add(new PartLimit
                 {
+
                     Part = reader.IsDBNull(0) ? null : reader.GetString(0),
                     Class = reader.IsDBNull(1) ? null : reader.GetString(1),
                     Description = reader.IsDBNull(2) ? null : reader.GetString(2),
                     TaskReference = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    LowerLimit = reader.IsDBNull(4) ? (double?)null : (double)reader.GetDecimal(4),
-                    UpperLimit = reader.IsDBNull(5) ? (double?)null : (double)reader.GetDecimal(5),
+                    LowerLimit = reader.IsDBNull(4) ? (double?)null : reader.GetDouble(4),
+                    UpperLimit = reader.IsDBNull(5) ? (double?)null : reader.GetDouble(5),
 
                 });
             }
 
             return limits;
         }
+
 
 
 
