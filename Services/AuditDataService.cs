@@ -695,12 +695,12 @@ SELECT DISTINCT
     p.description,
     ps.task_reference,
      IIF(
-        p.class NOT IN ('TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER'),
+        p.class NOT IN ('TS_CFA_ENER'),
         CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000,
         pt.lower_limit_value
     ) AS lower_limit_k,
     IIF(
-        p.class NOT IN ('TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER'),
+        p.class NOT IN ('TS_CFA_ENER'),
         CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000,
         pt.upper_limit_value
     ) AS upper_limit_k
