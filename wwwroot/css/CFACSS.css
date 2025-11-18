@@ -1,0 +1,349 @@
+body {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background-color: #f6f8fa;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 20px;
+}
+
+.card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 25px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+h2 {
+    color: #34495e;
+    margin-top: 30px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+table th, table td {
+    border: 1px solid #e0e0e0;
+    padding: 10px;
+    text-align: center;
+}
+
+table th {
+    background-color: #3498db;
+    color: white;
+}
+
+table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.summary div {
+    background-color: #ecf0f1;
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 0.95rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.error {
+    color: red;
+    margin-top: 20px;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* Spinner overlay */
+#loadingOverlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255,255,255,0.8);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    transition: opacity 0.3s ease;
+}
+
+.spinner {
+    border: 8px solid #e0e0e0;
+    border-top: 8px solid #3498db;
+    border-radius: 50%;
+    width: 70px;
+    height: 70px;
+    animation: spin 1s linear infinite;
+    position: relative;
+}
+
+/* Optional logo inside spinner */
+.spinner img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+button {
+    cursor: pointer;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 15px;
+    font-size: 1rem;
+}
+
+button:disabled {
+    background-color: #95a5a6;
+}
+
+input {
+    padding: 8px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    margin-right: 5px;
+}
+
+.zero-fill {
+    background-color: #f9caca !important;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background-color: #f4f4f4;
+}
+
+.loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.spinner img {
+    height: 50px;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f8f9fa;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 img {
+    height: 50px;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+
+input {
+    padding: 6px;
+    font-size: 16px;
+    margin-right: 6px;
+}
+
+button {
+    padding: 6px 12px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: none;
+    background: #3498db;
+    color: white;
+    cursor: pointer;
+}
+
+    button:hover {
+        background: #2980b9;
+    }
+
+/* Minimal button */
+.btn-small {
+    padding: 2px 6px;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+/* Loading overlay */
+#loadingOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.8);
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    flex-direction: column;
+}
+
+.loader {
+    border: 6px solid #f3f3f3;
+    border-top: 6px solid #3498db;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Cards */
+.kpi-box {
+    display: inline-block;
+    width: 180px;
+    padding: 12px;
+    margin: 8px;
+    background: white;
+    text-align: center;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.kpi-value {
+    font-size: 22px;
+    font-weight: bold;
+    margin-top: 6px;
+}
+
+/* Product card */
+.product-card {
+    padding: 16px;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    max-width: 600px;
+}
+
+.product-text {
+    font-size: 18px;
+    color: #333;
+    word-wrap: break-word;
+}
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background: #f1f1f1;
+    cursor: pointer;
+}
+
+/* Collapsible */
+.collapsible {
+    background: white;
+    cursor: pointer;
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 12px;
+    border: 1px solid #ccc;
+    text-align: left;
+}
+
+    .collapsible:after {
+        content: '\25BC';
+        float: right;
+    }
+
+.active:after {
+    content: '\25B2';
+}
+
+.content {
+    display: none;
+    padding: 0 12px;
+    overflow: hidden;
+}
+
+/* KPI Cards Sticky */
+#kpiContainer {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    padding: 10px 0;
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+}
+
+/* Highlight table row */
+.highlight {
+    outline: 3px solid #f39c12;
+}
+
+/* Product card copy button */
+.btn-small {
+    font-size: 12px;
+    padding: 4px 8px;
+    margin-top: 8px;
+}
+
+/* Chart bar highlight (handled via dataset colors) */
