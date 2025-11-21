@@ -4,38 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CFA Enhanced Dashboard</title>
-    <link rel="stylesheet" href="./css/CFACSS.css">
+    <link href="css/CFACSS.css" rel="stylesheet" />
     <script src="./lib/chart.js/Chart.min.js"></script>
 </head>
 <body>
 
-    <!-- Loading -->
-    <div id="loadingOverlay">
-        <div class="loader"></div>
-        <p style="margin-top:12px;">Loading, please wait...</p>
-    </div>
-
-    <h1><img src="./Img/FPALogo.png"> CFA Enhanced Dashboard</h1>
+    <h1>
+        <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
+        CFA Enhanced Dashboard
+    </h1>
 
     <!-- Controls -->
-    <div>
-        <label>Audit ID:</label>
+    <div style="margin-bottom:20px;">
+        <label for="auditInput"><strong>Audit ID:</strong></label>
         <input type="text" id="auditInput" placeholder="e.g. 1461">
 
-        <!-- TubType Dropdown -->
-        <label style="margin-left:10px;">Tub Type:</label>
-        <select id="tubTypeSelect">
-            <option value="AUTO">AUTO (Default)</option>
-            <option value="Top">Top</option>
-            <option value="Bot">Bot</option>
-            <option value="Single">Single</option>
-        </select>
+        <label for="tubTypeSelect" style="margin-left:10px;"><strong>Tub Type:</strong></label>
+        <div class="select-wrapper">
+            <select id="tubTypeSelect">
+                <option value="AUTO">Auto (Default)</option>
+                <option value="Top">Top</option>
+                <option value="Bot">Bot</option>
+                <option value="Single">Single</option>
+            </select>
+        </div>
 
-        <button onclick="loadResults()">Load</button>
+        <button onclick="loadResults()" id="loadBtn">Load</button>
     </div>
-    <br />
 
-    <!-- Product info -->
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner">
+            <img src="./Img/FPALogo.png" alt="logo">
+            <p style="color:white; font-weight:bold;">Processing... Please wait</p>
+        </div>
+    </div>
+
+    <!-- Product Info Card -->
     <div class="product-card">
         <div id="productText" class="product-text">Waiting for data...</div>
         <button class="btn-small" onclick="copyProductInfo()">Copy Product Info</button>
@@ -44,18 +49,18 @@
     <!-- KPI Cards -->
     <div id="kpiContainer"></div>
 
-    <!-- Table Section (expanded by default) -->
+    <!-- Results Table -->
     <div class="collapsible active">Results Table</div>
     <div class="content" style="display: block;">
-        <br />
+        <br>
         <button onclick="exportTable()">Export Table CSV</button>
         <table id="resultsTable"></table>
     </div>
 
-    <!-- Collapsible Chart -->
+    <!-- Chart Section -->
     <div class="collapsible">Show / Hide Chart</div>
     <div class="content">
-        <br />
+        <br>
         <button onclick="exportChart()">Export Chart Image</button>
         <canvas id="limitChart" height="120"></canvas>
     </div>
@@ -71,25 +76,19 @@
         async function loadResults() {
             const id = document.getElementById("auditInput").value.trim();
             const tubType = document.getElementById("tubTypeSelect").value;
-
             if (!id) return alert("Enter Audit ID");
 
             showLoading();
+            const btn = document.getElementById("loadBtn");
+            btn.disabled = true;
 
             try {
-                // Original relative URL fetch
                 const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}&tubType=${tubType}`);
                 const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data?.message || `Server responded with status ${response.status}`);
-                }
-
-                if (!data || !Array.isArray(data.partLimits)) throw new Error("No PartLimits data returned from server");
+                if (!response.ok) throw new Error(data?.message || `Server responded ${response.status}`);
 
                 lastData = data;
 
-                // Display product info
                 document.getElementById("productText").innerText = data.dataProduct || "N/A";
 
                 renderKPIs(data);
@@ -106,6 +105,7 @@
                 if (chartInstance) chartInstance.destroy();
             } finally {
                 hideLoading();
+                btn.disabled = false;
             }
         }
 
@@ -154,13 +154,17 @@
             }).length;
             const fail = total - pass;
 
+            // 3 columns in one row
             document.getElementById("kpiContainer").innerHTML = `
-                    <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
-                    <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
-                    <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+                    <div class="kpi-row">
+                        <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
+                        <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
+                        <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+                    </div>
                 `;
         }
 
+        // Table
         function renderTable(data) {
             const table = document.getElementById("resultsTable");
             table.innerHTML = "";
@@ -173,7 +177,6 @@
                 const row = table.insertRow();
                 [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v ?? 0);
                 row.style.background = (actual < item.lowerLimit || actual > item.upperLimit) ? "#f8d7da" : "#d4edda";
-
                 row.addEventListener("click", () => highlightRow(index));
             });
         }
@@ -189,16 +192,16 @@
 
         function updateChartColors() {
             if (!chartInstance || !lastData) return;
-
             chartInstance.data.datasets[0].backgroundColor = lastData.partLimits.map((item, i) => {
                 const actual = classMapping(item.class, lastData);
                 const fail = actual < item.lowerLimit || actual > item.upperLimit;
-                if (i === highlightedIndex) return "#f39c12"; // highlighted
+                if (i === highlightedIndex) return "#f39c12";
                 return fail ? "#e74c3c" : "#3498db";
             });
             chartInstance.update();
         }
 
+        // Chart
         function renderChart(data) {
             if (!data || !Array.isArray(data.partLimits)) return;
 
@@ -235,8 +238,8 @@
             });
             const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
             const link = document.createElement("a");
-            link.setAttribute("href", csvContent);
-            link.setAttribute("download", `CFA_Audit_${document.getElementById("auditInput").value}.csv`);
+            link.href = csvContent;
+            link.download = `CFA_Audit_${document.getElementById("auditInput").value}.csv`;
             link.click();
         }
 
@@ -249,7 +252,7 @@
             link.click();
         }
 
-        // Collapsible panels
+        // Collapsible
         document.querySelectorAll(".collapsible").forEach(btn => {
             btn.addEventListener("click", () => {
                 btn.classList.toggle("active");
@@ -258,7 +261,6 @@
             });
         });
 
-        // Enter key triggers load
         document.getElementById("auditInput").addEventListener("keydown", e => { if (e.key === "Enter") loadResults(); });
 
     </script>

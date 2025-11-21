@@ -3,24 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CFA Calculation Results with Limits</title>
-    <link rel="stylesheet" href="./css/CFACSS.css">
+    <title>CFA Enhanced Dashboard</title>
+    <link rel="stylesheet" href="/css/CFACSS.css">
     <script src="./lib/chart.js/Chart.min.js"></script>
-    
 </head>
 <body>
 
     <h1>
-        <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
-        CFA Calculation Results
+        <img src="./Img/FPALogo.png" alt="logo">
+        CFA Enhanced Dashboard
     </h1>
 
-    <div>
-        <label for="auditInput"><strong>Enter Audit ID:</strong></label>
+    <!-- Controls -->
+    <div style="margin-bottom:20px;">
+        <label for="auditInput"><strong>Audit ID:</strong></label>
         <input type="text" id="auditInput" placeholder="e.g. 1461">
-        <button onclick="loadResults()" id="loadBtn">Load Data</button>
+
+        <label for="tubTypeSelect" style="margin-left:10px;"><strong>Tub Type:</strong></label>
+        <div class="select-wrapper">
+            <select id="tubTypeSelect">
+                <option value="AUTO">Auto (Default)</option>
+                <option value="Top">Top</option>
+                <option value="Bot">Bot</option>
+                <option value="Single">Single</option>
+            </select>
+        </div>
+
+        <button onclick="loadResults()" id="loadBtn">Load</button>
     </div>
 
+    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">
@@ -28,107 +40,228 @@
         </div>
     </div>
 
-    <h2>Audit Results with Limits</h2>
-    <table id="resultsTable"></table>
+    <!-- Product Info Card -->
+    <div class="product-card">
+        <div id="productText" class="product-text">Waiting for data...</div>
+        <button class="btn-small" onclick="copyProductInfo()">Copy Product Info</button>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="kpiContainer"></div>
+
+    <!-- Results Table -->
+    <div class="collapsible active">Results Table</div>
+    <div class="content" style="display: block;">
+        <br>
+        <button onclick="exportTable()">Export Table CSV</button>
+        <table id="resultsTable"></table>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="collapsible">Show / Hide Chart</div>
+    <div class="content">
+        <br>
+        <button onclick="exportChart()">Export Chart Image</button>
+        <canvas id="limitChart" height="120"></canvas>
+    </div>
 
     <script>
-        // Helper function for safe array access
-        function safeArray(arr, index) {
-            return (arr && arr.length > index) ? arr[index] : 0;
-        }
+        let chartInstance = null;
+        let lastData = null;
+        let highlightedIndex = null;
+
+        function showLoading() { document.getElementById("loadingOverlay").style.display = "flex"; }
+        function hideLoading() { document.getElementById("loadingOverlay").style.display = "none"; }
 
         async function loadResults() {
-            const auditId = document.getElementById("auditInput").value.trim();
-            const overlay = document.getElementById("loadingOverlay");
-            const btn = document.getElementById("loadBtn");
+            const id = document.getElementById("auditInput").value.trim();
+            const tubType = document.getElementById("tubTypeSelect").value;
+            if (!id) return alert("Enter Audit ID");
 
-            if (!auditId) {
-                alert("Please enter an Audit ID.");
-                return;
-            }
-
-            overlay.style.display = "flex";
-            btn.disabled = true;
+            showLoading();
 
             try {
-                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${auditId}`);
-                if (!response.ok) throw new Error(`API returned ${response.status}`);
+                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}&tubType=${tubType}`);
                 const data = await response.json();
+                if (!response.ok) throw new Error(data?.message || `Server responded ${response.status}`);
 
-                // Use lowercase first letters for properties
-                const classMapping = {
-                    "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
-                    "TS_CFA_FVFR": data.fvfr ?? 0,
-                    "TS_CFA_FVOL": data.fillVolume ?? 0,
-                    "TS_CFA_FT1": safeArray(data.timedFills, 0),
-                    "TS_CFA_FT2": safeArray(data.timedFills, 1),
-                    "TS_CFA_FT3": safeArray(data.timedFills, 2),
-                    "TS_CFA_FT4": safeArray(data.timedFills, 3),
-                    "TS_CFA_FT5": safeArray(data.timedFills, 4),
-                    "TS_CFA_FF1": safeArray(data.finalFills, 0),
-                    "TS_CFA_FF2": safeArray(data.finalFills, 1),
-                    "TS_CFA_FF3": safeArray(data.finalFills, 2),
-                    "TS_CFA_FF4": safeArray(data.finalFills, 3),
-                    "TS_CFA_FF5": safeArray(data.finalFills, 4),
-                    "TS_CFA_MWT": data.mainWashTemp ?? 0,
-                    "TS_CFA_FNT": data.finalRinseTemp ?? 0,
-                    "TS_CFA_ENER": data.energyKWh ?? 0,
-                    "TS_CFA_HEATUP": data.heatUpRateCPerS ?? 0,
-                    "TS_CFA_VOLT": data.voltage ?? 0,
-                    "TS_CFA_MWA": data.mainWashAmperage ?? 0,
-                    "TS_CFA_FRA": data.finalRinseAmperage ?? 0,
-                    "TS_CFA_CTIME": data.cycleTime ?? 0
-                };
+                lastData = data;
 
-                const table = document.getElementById("resultsTable");
-                table.innerHTML = "";
+                // Product info
+                document.getElementById("productText").innerText = data.dataProduct || "N/A";
 
-                // Table header
-                const header = table.insertRow();
-                ["Part", "Class", "Description", "Lower Limit", "Actual", "Upper Limit"].forEach(text => {
-                    const th = document.createElement("th");
-                    th.textContent = text;
-                    header.appendChild(th);
-                });
-
-                // Populate rows (taskReference removed)
-                data.partLimits.forEach(item => {
-                    const actualValue = classMapping[item.class] ?? 0;
-                    const row = table.insertRow();
-
-                    [
-                        item.part ?? "-",
-                        item.class ?? "-",
-                        item.description ?? "-",
-                        item.lowerLimit ?? "-",
-                        actualValue,
-                        item.upperLimit ?? "-"
-                    ].forEach(val => {
-                        const cell = row.insertCell();
-                        cell.textContent = val;
-                    });
-
-                    if ((item.lowerLimit !== null && actualValue < item.lowerLimit) ||
-                        (item.upperLimit !== null && actualValue > item.upperLimit)) {
-                        row.style.backgroundColor = "#f8d7da";  // fail
-                    } else {
-                        row.style.backgroundColor = "#d4edda";  // pass
-                    }
-                });
-
+                renderKPIs(data);
+                renderTable(data);
+                renderChart(data);
 
             } catch (err) {
                 console.error(err);
-                alert("Failed to load results: " + err.message);
+                alert("Error loading data: " + err.message);
+                document.getElementById("productText").innerText = "Error loading product info";
+                lastData = null;
+                document.getElementById("kpiContainer").innerHTML = "";
+                document.getElementById("resultsTable").innerHTML = "";
+                if (chartInstance) chartInstance.destroy();
             } finally {
-                overlay.style.display = "none";
-                btn.disabled = false;
+                hideLoading();
             }
         }
 
-        document.getElementById("auditInput").addEventListener("keydown", e => {
-            if (e.key === "Enter") loadResults();
+        function copyProductInfo() {
+            if (!lastData) return;
+            navigator.clipboard.writeText(lastData.dataProduct || "").then(() => alert("Copied!"));
+        }
+
+        function safeArray(arr, index) { return Array.isArray(arr) && arr.length > index ? arr[index] : 0; }
+
+        function classMapping(className, data) {
+            if (!data) return 0;
+            const map = {
+                "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
+                "TS_CFA_FVFR": data.fvfr ?? 0,
+                "TS_CFA_FVOL": data.fillVolume ?? 0,
+                "TS_CFA_FT1": safeArray(data.timedFills, 0),
+                "TS_CFA_FT2": safeArray(data.timedFills, 1),
+                "TS_CFA_FT3": safeArray(data.timedFills, 2),
+                "TS_CFA_FT4": safeArray(data.timedFills, 3),
+                "TS_CFA_FT5": safeArray(data.timedFills, 4),
+                "TS_CFA_FF1": safeArray(data.finalFills, 0),
+                "TS_CFA_FF2": safeArray(data.finalFills, 1),
+                "TS_CFA_FF3": safeArray(data.finalFills, 2),
+                "TS_CFA_FF4": safeArray(data.finalFills, 3),
+                "TS_CFA_FF5": safeArray(data.finalFills, 4),
+                "TS_CFA_MWT": data.mainWashTemp ?? 0,
+                "TS_CFA_FNT": data.finalRinseTemp ?? 0,
+                "TS_CFA_ENER": data.energyKWh ?? 0,
+                "TS_CFA_HEATUP": data.heatUpRateCPerS ?? 0,
+                "TS_CFA_VOLT": data.voltage ?? 0,
+                "TS_CFA_MWA": data.mainWashAmperage ?? 0,
+                "TS_CFA_FRA": data.finalRinseAmperage ?? 0,
+                "TS_CFA_CTIME": data.cycleTime ?? 0
+            };
+            return map[className] ?? 0;
+        }
+
+        function renderKPIs(data) {
+            if (!data || !Array.isArray(data.partLimits)) return;
+            const total = data.partLimits.length;
+            const pass = data.partLimits.filter(x => {
+                const act = classMapping(x.class, data);
+                return x.lowerLimit <= act && act <= x.upperLimit;
+            }).length;
+            const fail = total - pass;
+
+            document.getElementById("kpiContainer").innerHTML = `
+                    <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
+                    <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
+                    <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+                `;
+        }
+
+        function renderTable(data) {
+            const table = document.getElementById("resultsTable");
+            table.innerHTML = "";
+
+            const header = table.insertRow();
+            ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => header.insertCell().textContent = h);
+
+            data.partLimits.forEach((item, index) => {
+                const actual = classMapping(item.class, data);
+                const row = table.insertRow();
+                [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v ?? 0);
+                row.style.background = (actual < item.lowerLimit || actual > item.upperLimit) ? "#f8d7da" : "#d4edda";
+
+                row.addEventListener("click", () => highlightRow(index));
+            });
+        }
+
+        function highlightRow(index) {
+            highlightedIndex = index;
+            const tableRows = document.getElementById("resultsTable").rows;
+            for (let i = 1; i < tableRows.length; i++) {
+                tableRows[i].classList.toggle("highlight", i - 1 === index);
+            }
+            updateChartColors();
+        }
+
+        function updateChartColors() {
+            if (!chartInstance || !lastData) return;
+
+            chartInstance.data.datasets[0].backgroundColor = lastData.partLimits.map((item, i) => {
+                const actual = classMapping(item.class, lastData);
+                const fail = actual < item.lowerLimit || actual > item.upperLimit;
+                if (i === highlightedIndex) return "#f39c12"; // highlighted
+                return fail ? "#e74c3c" : "#3498db";
+            });
+            chartInstance.update();
+        }
+
+        function renderChart(data) {
+            if (!data || !Array.isArray(data.partLimits)) return;
+
+            const labels = data.partLimits.map(x => x.class);
+            const actual = data.partLimits.map(x => classMapping(x.class, data));
+            const lower = data.partLimits.map(x => x.lowerLimit);
+            const upper = data.partLimits.map(x => x.upperLimit);
+
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById("limitChart");
+            chartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        { label: "Actual", data: actual, backgroundColor: actual.map((v, i) => v < lower[i] || v > upper[i] ? "#e74c3c" : "#3498db") },
+                        { label: "Lower Limit", data: lower, type: "line", borderColor: "green", fill: false },
+                        { label: "Upper Limit", data: upper, type: "line", borderColor: "red", fill: false }
+                    ]
+                },
+                options: {
+                    onClick: (e, elements) => { if (elements.length) highlightRow(elements[0].index); },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => { const i = ctx.dataIndex; return `Actual: ${actual[i]}, Lower: ${lower[i]}, Upper: ${upper[i]}`; } } } }
+                }
+            });
+        }
+
+        function exportTable() {
+            if (!lastData) return;
+            const rows = [["Part", "Class", "Description", "Lower", "Actual", "Upper"]];
+            lastData.partLimits.forEach(item => {
+                const actual = classMapping(item.class, lastData);
+                rows.push([item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit]);
+            });
+            const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+            const link = document.createElement("a");
+            link.setAttribute("href", csvContent);
+            link.setAttribute("download", `CFA_Audit_${document.getElementById("auditInput").value}.csv`);
+            link.click();
+        }
+
+        function exportChart() {
+            if (!chartInstance) return;
+            const url = chartInstance.toBase64Image();
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `CFA_Audit_${document.getElementById("auditInput").value}_chart.png`;
+            link.click();
+        }
+
+        // Collapsible panels
+        document.querySelectorAll(".collapsible").forEach(btn => {
+            btn.addEventListener("click", () => {
+                btn.classList.toggle("active");
+                const content = btn.nextElementSibling;
+                content.style.display = (content.style.display === "block") ? "none" : "block";
+            });
         });
+
+        // Enter key triggers load
+        document.getElementById("auditInput").addEventListener("keydown", e => { if (e.key === "Enter") loadResults(); });
+
+        function copyProductInfo() {
+            if (!lastData) return;
+            navigator.clipboard.writeText(lastData.dataProduct || "").then(() => alert("Copied!"));
+        }
     </script>
 
 </body>
