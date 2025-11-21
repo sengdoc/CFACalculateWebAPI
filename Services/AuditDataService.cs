@@ -3,6 +3,8 @@ using CFACalculateWebAPI.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data.Common; // ✅ add this
+using System.Data.SqlClient;
+using System.Text;
 namespace CFACalculateWebAPI.Services
 {
     public class AuditDataService
@@ -128,7 +130,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             var resultList = new List<string>();
 
             // Build SQL like Delphi
-            var sql = @"SELECT TOP 1 p.part,ad.Serial,p.description FROM Audit ad
+            var sql = @"SELECT TOP 1 p.part,ad.Serial,p.description,ad.Comments FROM Audit ad
                       inner join serial_track st on st.serial = ad.Serial 
                       inner join part p on p.part = st.part 
                       WHERE AuditID = @AuditID";
@@ -146,6 +148,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
                 resultList.Add(reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2));
                 resultList.Add(reader.GetString(0));
                 resultList.Add(reader.GetString(1));
+                resultList.Add(reader.GetString(3));
             }
             return resultList.ToArray();
         }
@@ -683,13 +686,14 @@ WHERE auditid = {(string.IsNullOrEmpty(auditId)
 }
 
 
-        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo)
-        {
-            var limits = new List<PartLimit>();
 
-            using var conn = await GetOpenConnectionAsync();
+public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo, string typeTub)
+    {
+        var limits = new List<PartLimit>();
 
-            string sql = @"
+        using var conn = await GetOpenConnectionAsync();
+
+        var sql = new StringBuilder(@"
 SELECT DISTINCT
     p.part,
     p.class,
@@ -718,10 +722,19 @@ INNER JOIN part p ON ps.component = p.part
 INNER JOIN part_issue pii ON pii.part = p.part
 INNER JOIN part_structure ps2 ON ps2.component = ps.part
 INNER JOIN part_test pt ON ps.component = pt.part AND pt.part_issue = pii.part_issue
-INNER JOIN test_result_lis tsl on tsl.test_part = '595130'
+INNER JOIN test_result_lis tsl ON tsl.test_part = '595130'
 WHERE ps2.part = @ParentPart
   AND tsl.serial = @Serial
-  AND tsl.test_info1 = 'Top'
+");
+
+        // Optional filter
+        if (typeTub == "Top" || typeTub == "Bot")
+        {
+            sql.AppendLine("  AND tsl.test_info1 = @TypeTub");
+        } 
+        //else = SINGLE
+
+        sql.AppendLine(@"
   AND tsl.test_unit_id = 'Celsius'
   AND ps2.task = 4625
   AND ps.eff_start <= GETDATE()
@@ -730,41 +743,51 @@ WHERE ps2.part = @ParentPart
   AND pii.eff_close >= GETDATE()
   AND ps2.eff_start <= GETDATE()
   AND ps2.eff_close >= GETDATE()
-  AND p.class IN ('TS_CFA_INWT', 'TS_CFA_FVFR', 'TS_CFA_FVOL', 'TS_CFA_FT1',
-                  'TS_CFA_FT2', 'TS_CFA_FT3', 'TS_CFA_FT4', 'TS_CFA_FT5',
-                  'TS_CFA_FF1', 'TS_CFA_FF2', 'TS_CFA_FF3', 'TS_CFA_FF4',
-                  'TS_CFA_FF5', 'TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER',
-                  'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA')
-ORDER BY ps.task_reference;";
+  AND p.class IN (
+      'TS_CFA_INWT', 'TS_CFA_FVFR', 'TS_CFA_FVOL', 'TS_CFA_FT1',
+      'TS_CFA_FT2', 'TS_CFA_FT3', 'TS_CFA_FT4', 'TS_CFA_FT5',
+      'TS_CFA_FF1', 'TS_CFA_FF2', 'TS_CFA_FF3', 'TS_CFA_FF4',
+      'TS_CFA_FF5', 'TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER',
+      'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA'
+  )
+ORDER BY ps.task_reference;
+");
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
+        // Use SqlCommand (NOW AddWithValue works)
+        using var cmd = new SqlCommand(sql.ToString(), (SqlConnection)conn);
 
-            // Only parameters
-            cmd.Parameters.Add(new SqlParameter("@ParentPart", parentPart));
-            cmd.Parameters.Add(new SqlParameter("@Serial", serialNo));
+        // Always add mandatory parameters
+        cmd.Parameters.AddWithValue("@ParentPart", parentPart);
+        cmd.Parameters.AddWithValue("@Serial", serialNo);
 
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
+        // Optional parameter — only add when needed
+        if (typeTub == "Top" || typeTub == "Bot")
+        {
+            cmd.Parameters.AddWithValue("@TypeTub", typeTub);
+        }
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
                 limits.Add(new PartLimit
                 {
-
                     Part = reader.IsDBNull(0) ? null : reader.GetString(0),
                     Class = reader.IsDBNull(1) ? null : reader.GetString(1),
                     Description = reader.IsDBNull(2) ? null : reader.GetString(2),
                     TaskReference = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    LowerLimit = reader.IsDBNull(4) ? (double?)null : reader.GetDouble(4),
-                    UpperLimit = reader.IsDBNull(5) ? (double?)null : reader.GetDouble(5),
-
+                    LowerLimit = reader.IsDBNull(4) ? (double?)null : Convert.ToDouble(reader.GetValue(4)),
+                    UpperLimit = reader.IsDBNull(5) ? (double?)null : Convert.ToDouble(reader.GetValue(5)),
                 });
+
             }
 
             return limits;
-        }
-
-
-
-
     }
+
+
+
+
+
+}
 }

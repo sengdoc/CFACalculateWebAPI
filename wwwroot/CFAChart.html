@@ -6,7 +6,6 @@
     <title>CFA Enhanced Dashboard</title>
     <link rel="stylesheet" href="./css/CFACSS.css">
     <script src="./lib/chart.js/Chart.min.js"></script>
-
 </head>
 <body>
 
@@ -22,6 +21,16 @@
     <div>
         <label>Audit ID:</label>
         <input type="text" id="auditInput" placeholder="e.g. 1461">
+
+        <!-- TubType Dropdown -->
+        <label style="margin-left:10px;">Tub Type:</label>
+        <select id="tubTypeSelect">
+            <option value="AUTO">AUTO (Default)</option>
+            <option value="Top">Top</option>
+            <option value="Bot">Bot</option>
+            <option value="Single">Single</option>
+        </select>
+
         <button onclick="loadResults()">Load</button>
     </div>
     <br />
@@ -50,6 +59,7 @@
         <button onclick="exportChart()">Export Chart Image</button>
         <canvas id="limitChart" height="120"></canvas>
     </div>
+
     <script>
         let chartInstance = null;
         let lastData = null;
@@ -60,26 +70,26 @@
 
         async function loadResults() {
             const id = document.getElementById("auditInput").value.trim();
+            const tubType = document.getElementById("tubTypeSelect").value;
+
             if (!id) return alert("Enter Audit ID");
 
             showLoading();
 
             try {
-                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}`);
-
-                if (!response.ok) {
-                    throw new Error(`Server responded with status ${response.status}`);
-                }
-
+                // Original relative URL fetch
+                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}&tubType=${tubType}`);
                 const data = await response.json();
 
-                // Ensure data.partLimits exists and is an array
-                if (!data || !Array.isArray(data.partLimits)) {
-                    throw new Error("No partLimits data returned from server");
+                if (!response.ok) {
+                    throw new Error(data?.message || `Server responded with status ${response.status}`);
                 }
+
+                if (!data || !Array.isArray(data.partLimits)) throw new Error("No PartLimits data returned from server");
 
                 lastData = data;
 
+                // Display product info
                 document.getElementById("productText").innerText = data.dataProduct || "N/A";
 
                 renderKPIs(data);
@@ -90,8 +100,6 @@
                 console.error(err);
                 alert("Error loading data: " + err.message);
                 document.getElementById("productText").innerText = "Error loading product info";
-
-                // Clear previous data if exists
                 lastData = null;
                 document.getElementById("kpiContainer").innerHTML = "";
                 document.getElementById("resultsTable").innerHTML = "";
@@ -105,6 +113,8 @@
             if (!lastData) return;
             navigator.clipboard.writeText(lastData.dataProduct || "").then(() => alert("Copied!"));
         }
+
+        function safeArray(arr, index) { return Array.isArray(arr) && arr.length > index ? arr[index] : 0; }
 
         function classMapping(className, data) {
             if (!data) return 0;
@@ -134,10 +144,6 @@
             return map[className] ?? 0;
         }
 
-        function safeArray(arr, index) {
-            return Array.isArray(arr) && arr.length > index ? arr[index] : 0;
-        }
-
         function renderKPIs(data) {
             if (!data || !Array.isArray(data.partLimits)) return;
 
@@ -149,15 +155,13 @@
             const fail = total - pass;
 
             document.getElementById("kpiContainer").innerHTML = `
-                <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
-                <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
-                <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
-            `;
+                    <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
+                    <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
+                    <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+                `;
         }
 
         function renderTable(data) {
-            if (!data || !Array.isArray(data.partLimits)) return;
-
             const table = document.getElementById("resultsTable");
             table.innerHTML = "";
 
@@ -192,7 +196,6 @@
                 if (i === highlightedIndex) return "#f39c12"; // highlighted
                 return fail ? "#e74c3c" : "#3498db";
             });
-
             chartInstance.update();
         }
 
@@ -205,7 +208,6 @@
             const upper = data.partLimits.map(x => x.upperLimit);
 
             if (chartInstance) chartInstance.destroy();
-
             const ctx = document.getElementById("limitChart");
             chartInstance = new Chart(ctx, {
                 type: "bar",
@@ -218,32 +220,19 @@
                     ]
                 },
                 options: {
-                    onClick: (e, elements) => {
-                        if (elements.length) highlightRow(elements[0].index);
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: (ctx) => {
-                                    const i = ctx.dataIndex;
-                                    return `Actual: ${actual[i]}, Lower: ${lower[i]}, Upper: ${upper[i]}`;
-                                }
-                            }
-                        }
-                    }
+                    onClick: (e, elements) => { if (elements.length) highlightRow(elements[0].index); },
+                    plugins: { tooltip: { callbacks: { label: (ctx) => { const i = ctx.dataIndex; return `Actual: ${actual[i]}, Lower: ${lower[i]}, Upper: ${upper[i]}`; } } } }
                 }
             });
         }
 
         function exportTable() {
-            if (!lastData || !Array.isArray(lastData.partLimits)) return;
-
+            if (!lastData) return;
             const rows = [["Part", "Class", "Description", "Lower", "Actual", "Upper"]];
             lastData.partLimits.forEach(item => {
                 const actual = classMapping(item.class, lastData);
                 rows.push([item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit]);
             });
-
             const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
             const link = document.createElement("a");
             link.setAttribute("href", csvContent);
@@ -268,8 +257,11 @@
                 content.style.display = (content.style.display === "block") ? "none" : "block";
             });
         });
-    </script>
 
+        // Enter key triggers load
+        document.getElementById("auditInput").addEventListener("keydown", e => { if (e.key === "Enter") loadResults(); });
+
+    </script>
 
 </body>
 </html>

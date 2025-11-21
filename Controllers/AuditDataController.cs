@@ -14,31 +14,48 @@ namespace CFACalculateWebAPI.Controllers
             _service = service;
         }
 
-        #region Full Calculation
-
         /// <summary>
-        /// Run the full calculation sequence for a given serial and auditId.
-        /// Returns all relevant calculation results including fill volumes, FVFR, temperatures, energy, amperage, and voltage.
+        /// Run full calculation for a given AuditId and TubType
         /// GET: api/CFACal/RunFullCalculation
         /// </summary>
         [HttpGet("RunFullCalculation")]
-        public async Task<IActionResult> RunFullCalculation(string? serial, string? auditId)
+        public async Task<IActionResult> RunFullCalculation(string? auditId, string? TubType)
         {
             try
             {
-                // 1. Check Serial No
+                if (string.IsNullOrEmpty(auditId))
+                    return BadRequest(new { message = "AuditId is required" });
+
+                // 1. Get Product Data
                 string[] DataProduct = await _service.CheckSNNoByAuditIdAsync(auditId);
 
+                if (string.IsNullOrEmpty(TubType) || TubType == "AUTO")
+                {
+                    if (string.IsNullOrEmpty(DataProduct[3]))
+                    {
+                        return BadRequest(new { message = "AUTO Tub Type not found. Please select a Tub Type." });
+                    }
+
+                    TubType = DataProduct[3].ToUpper() switch
+                    {
+                        "TOP" => "Top",
+                        "BOT" => "Bot",
+                        "SINGLE" => "Single",
+                        _ => TubType
+                    };
+                }
+
                 // 2. Sample Runs
-                var sampleRuns = await _service.InitSampleRunNoAsync(serial, auditId);
+                var sampleRuns = await _service.InitSampleRunNoAsync(DataProduct[0], auditId);
                 if (!sampleRuns.Any())
                     return BadRequest(new { message = "No sample runs found." });
 
-                // 3. Fill calculations
+                // 3. Fill Calculations
                 var endSampleNos = sampleRuns.Select(sr => sr.EndSampleRun).ToList();
-                var fillResult = await _service.CalTimedFinalFillsNAsync(serial, auditId, endSampleNos);
+                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[0], auditId, endSampleNos);
                 double totalFillVolume = fillResult.FinalFills?.Sum() ?? 0;
 
+                // 4. Main Fill Info
                 var mainFillTimes = 0;
                 var mainFillStart = new List<int>();
                 var mainFillEnd = new List<int>();
@@ -58,35 +75,35 @@ namespace CFACalculateWebAPI.Controllers
                     if (i == mainFillStart.Count - 1) mainFillEnd.Add(9999);
                 }
 
-                // 4. Perform calculations
-                double fvfrValue = await _service.CalFVFRNAsync(serial, auditId, mainFillTimes, fillRanges);
-                double incomingWaterTemp = await _service.CalInComWTempAsync(serial, auditId, mainFillTimes, fillRanges);
-                double heatUpRate = await _service.CalHeatUpRateAsync(serial, auditId);
-                double cycleTime = await _service.CalCycleTimeAsync(serial, auditId);
+                // 5. Calculations
+                double fvfrValue = await _service.CalFVFRNAsync(DataProduct[0], auditId, mainFillTimes, fillRanges);
+                double incomingWaterTemp = await _service.CalInComWTempAsync(DataProduct[0], auditId, mainFillTimes, fillRanges);
+                double heatUpRate = await _service.CalHeatUpRateAsync(DataProduct[0], auditId);
+                double cycleTime = await _service.CalCycleTimeAsync(DataProduct[0], auditId);
 
-                var tempResult = await _service.CalTemperatureTNAsync(serial, auditId, mainFillStart.ToArray(), mainFillEnd.ToArray(), mainFillTimes);
+                var tempResult = await _service.CalTemperatureTNAsync(DataProduct[0], auditId, mainFillStart.ToArray(), mainFillEnd.ToArray(), mainFillTimes);
                 double mainWashTemp = tempResult.TemperatureIn[0];
                 double finalRinseTemp = tempResult.TemperatureIn[mainFillTimes] == 0
                     ? tempResult.TemperatureIn[mainFillTimes - 1]
                     : tempResult.TemperatureIn[mainFillTimes];
 
-                double energy = await _service.CalEnergyAsync(serial, auditId);
+                double energy = await _service.CalEnergyAsync(DataProduct[0], auditId);
 
-                var finalRinseResult = await _service.CalFinalRinseANAsync(serial, auditId, mainFillStart.ToArray(), mainFillTimes);
+                var finalRinseResult = await _service.CalFinalRinseANAsync(DataProduct[0], auditId, mainFillStart.ToArray(), mainFillTimes);
                 double mainWashAmperage = finalRinseResult.Values[0];
                 double finalRinseAmperage = finalRinseResult.Values[mainFillTimes - 1];
 
-                var voltage = await _service.CalVoltAsync(serial, auditId);
+                var voltage = await _service.CalVoltAsync(DataProduct[0], auditId);
 
-                // 5. Get part limits
-                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2]);
+                // 6. Get Part Limits
+                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType);
 
-                // 6. Return combined results
+                // 7. Return results
                 return Ok(new
                 {
                     DataProduct = DataProduct[0],
                     SampleRuns = sampleRuns,
-                    timedFills = fillResult.TimedFills,
+                    TimedFills = fillResult.TimedFills,
                     FinalFills = fillResult.FinalFills,
                     MainFillIndicators = fillResult.MainFillIndicators,
                     FillVolume = totalFillVolume,
@@ -100,18 +117,13 @@ namespace CFACalculateWebAPI.Controllers
                     MainWashAmperage = mainWashAmperage,
                     FinalRinseAmperage = finalRinseAmperage,
                     Voltage = voltage,
-                    PartLimits = partLimits   // <-- Added here
+                    PartLimits = partLimits
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(new { message = "An error occurred while processing the request.", detail = ex.Message });
             }
         }
-
-
-        #endregion
-
-
     }
 }
