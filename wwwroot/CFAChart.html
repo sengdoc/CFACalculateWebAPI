@@ -6,6 +6,8 @@
     <title>CFA Enhanced Dashboard</title>
     <link href="css/CFACSS.css" rel="stylesheet" />
     <script src="./lib/chart.js/Chart.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
 </head>
 <body>
 
@@ -53,7 +55,9 @@
     <div class="collapsible active">Results Table</div>
     <div class="content" style="display: block;">
         <br>
-        <button onclick="exportTable()">Export Table CSV</button>
+        <button onclick="exportTable('csv')">Export CSV</button>
+        <button onclick="exportTable('xlsx')">Export Excel</button>
+
         <table id="resultsTable"></table>
     </div>
 
@@ -229,19 +233,31 @@
             });
         }
 
-        function exportTable() {
+        function exportTable(format = "csv") {
             if (!lastData) return;
+
             const rows = [["Part", "Class", "Description", "Lower", "Actual", "Upper"]];
             lastData.partLimits.forEach(item => {
                 const actual = classMapping(item.class, lastData);
                 rows.push([item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit]);
             });
-            const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-            const link = document.createElement("a");
-            link.href = csvContent;
-            link.download = `CFA_Audit_${document.getElementById("auditInput").value}.csv`;
-            link.click();
+
+            const fileName = `CFA_Audit_${document.getElementById("auditInput").value}`;
+
+            if (format === "csv") {
+                const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+                const link = document.createElement("a");
+                link.href = csvContent;
+                link.download = `${fileName}.csv`;
+                link.click();
+            } else if (format === "xlsx") {
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                XLSX.utils.book_append_sheet(wb, ws, "Results");
+                XLSX.writeFile(wb, `${fileName}.xlsx`);
+            }
         }
+
 
         function exportChart() {
             if (!chartInstance) return;

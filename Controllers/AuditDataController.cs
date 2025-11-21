@@ -96,7 +96,8 @@ namespace CFACalculateWebAPI.Controllers
                 var voltage = await _service.CalVoltAsync(DataProduct[0], auditId);
 
                 // 6. Get Part Limits
-                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType);
+                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "");
+
 
                 // 7. Return results
                 return Ok(new
