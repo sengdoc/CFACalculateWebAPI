@@ -8,19 +8,45 @@
     <script src="./lib/chart.js/Chart.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
+    <style>
+        .tab-container {
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            background-color: #f1f1f1;
+            border: none;
+            outline: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-right: 2px;
+            font-weight: bold;
+        }
+
+            .tab-button.active {
+                background-color: #3498db;
+                color: white;
+            }
+
+        .tab-content {
+            display: none;
+        }
+
+        .highlight {
+            background-color: #f39c12 !important;
+        }
+    </style>
 </head>
 <body>
-
     <h1>
         <img src="./Img/FPALogo.png" alt="logo" style="height:50px; vertical-align:middle; margin-right:10px;">
         CFA Enhanced Dashboard
     </h1>
 
-    <!-- Controls -->
     <div style="margin-bottom:20px;">
         <label for="auditInput"><strong>Audit ID:</strong></label>
         <input type="text" id="auditInput" placeholder="e.g. 1461">
-
         <label for="tubTypeSelect" style="margin-left:10px;"><strong>Tub Type:</strong></label>
         <div class="select-wrapper">
             <select id="tubTypeSelect">
@@ -30,11 +56,9 @@
                 <option value="Single">Single</option>
             </select>
         </div>
-
         <button onclick="loadResults()" id="loadBtn">Load</button>
     </div>
 
-    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">
@@ -42,26 +66,32 @@
         </div>
     </div>
 
-    <!-- Product Info Card -->
     <div class="product-card">
         <div id="productText" class="product-text">Waiting for data...</div>
         <button class="btn-small" onclick="copyProductInfo()">Copy Product Info</button>
     </div>
 
-    <!-- KPI Cards -->
     <div id="kpiContainer"></div>
 
-    <!-- Results Table -->
-    <div class="collapsible active">Results Table</div>
-    <div class="content" style="display: block;">
+    <div class="tab-container">
+        <button class="tab-button active" onclick="openTab(event, 'ResultTableTab')">Result Table</button>
+        <button class="tab-button" onclick="openTab(event, 'VisualCheckTab')">Visual Check Table</button>
+    </div>
+
+    <div id="ResultTableTab" class="tab-content" style="display:block;">
         <br>
         <button onclick="exportTable('csv')">Export CSV</button>
         <button onclick="exportTable('xlsx')">Export Excel</button>
-
         <table id="resultsTable"></table>
     </div>
 
-    <!-- Chart Section -->
+    <div id="VisualCheckTab" class="tab-content">
+        <br>
+        <button onclick="exportVisualCheck('csv')">Export CSV</button>
+        <button onclick="exportVisualCheck('xlsx')">Export Excel</button>
+        <table id="visualCheckTable"></table>
+    </div>
+
     <div class="collapsible">Show / Hide Chart</div>
     <div class="content">
         <br>
@@ -87,16 +117,16 @@
             btn.disabled = true;
 
             try {
-                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}&tubType=${tubType}`);
+                const response = await fetch(`./api/CFACal/RunFullCalculation?auditId=${id}&TubType=${tubType}`);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data?.message || `Server responded ${response.status}`);
 
                 lastData = data;
-
-                document.getElementById("productText").innerText = data.dataProduct || "N/A";
+                document.getElementById("productText").innerText = data.vDataProduct || "N/A";
 
                 renderKPIs(data);
                 renderTable(data);
+                renderVisualCheck(data);
                 renderChart(data);
 
             } catch (err) {
@@ -106,6 +136,7 @@
                 lastData = null;
                 document.getElementById("kpiContainer").innerHTML = "";
                 document.getElementById("resultsTable").innerHTML = "";
+                document.getElementById("visualCheckTable").innerHTML = "";
                 if (chartInstance) chartInstance.destroy();
             } finally {
                 hideLoading();
@@ -115,7 +146,7 @@
 
         function copyProductInfo() {
             if (!lastData) return;
-            navigator.clipboard.writeText(lastData.dataProduct || "").then(() => alert("Copied!"));
+            navigator.clipboard.writeText(lastData.vDataProduct || "").then(() => alert("Copied!"));
         }
 
         function safeArray(arr, index) { return Array.isArray(arr) && arr.length > index ? arr[index] : 0; }
@@ -123,60 +154,79 @@
         function classMapping(className, data) {
             if (!data) return 0;
             const map = {
-                "TS_CFA_INWT": data.incomingWaterTemperature ?? 0,
-                "TS_CFA_FVFR": data.fvfr ?? 0,
-                "TS_CFA_FVOL": data.fillVolume ?? 0,
-                "TS_CFA_FT1": safeArray(data.timedFills, 0),
-                "TS_CFA_FT2": safeArray(data.timedFills, 1),
-                "TS_CFA_FT3": safeArray(data.timedFills, 2),
-                "TS_CFA_FT4": safeArray(data.timedFills, 3),
-                "TS_CFA_FT5": safeArray(data.timedFills, 4),
-                "TS_CFA_FF1": safeArray(data.finalFills, 0),
-                "TS_CFA_FF2": safeArray(data.finalFills, 1),
-                "TS_CFA_FF3": safeArray(data.finalFills, 2),
-                "TS_CFA_FF4": safeArray(data.finalFills, 3),
-                "TS_CFA_FF5": safeArray(data.finalFills, 4),
-                "TS_CFA_MWT": data.mainWashTemp ?? 0,
-                "TS_CFA_FNT": data.finalRinseTemp ?? 0,
-                "TS_CFA_ENER": data.energyKWh ?? 0,
-                "TS_CFA_HEATUP": data.heatUpRateCPerS ?? 0,
-                "TS_CFA_VOLT": data.voltage ?? 0,
-                "TS_CFA_MWA": data.mainWashAmperage ?? 0,
-                "TS_CFA_FRA": data.finalRinseAmperage ?? 0,
-                "TS_CFA_CTIME": data.cycleTime ?? 0
+                "TS_CFA_INWT": data.vIncomingWaterTemperature ?? 0,
+                "TS_CFA_FVFR": data.vFVFR ?? 0,
+                "TS_CFA_FVOL": data.vFillVolume ?? 0,
+                "TS_CFA_FT1": safeArray(data.vTimedFills, 0),
+                "TS_CFA_FT2": safeArray(data.vTimedFills, 1),
+                "TS_CFA_FT3": safeArray(data.vTimedFills, 2),
+                "TS_CFA_FT4": safeArray(data.vTimedFills, 3),
+                "TS_CFA_FT5": safeArray(data.vTimedFills, 4),
+                "TS_CFA_FF1": safeArray(data.vFinalFills, 0),
+                "TS_CFA_FF2": safeArray(data.vFinalFills, 1),
+                "TS_CFA_FF3": safeArray(data.vFinalFills, 2),
+                "TS_CFA_FF4": safeArray(data.vFinalFills, 3),
+                "TS_CFA_FF5": safeArray(data.vFinalFills, 4),
+                "TS_CFA_MWT": data.vMainWashTemp ?? 0,
+                "TS_CFA_FNT": data.vFinalRinseTemp ?? 0,
+                "TS_CFA_ENER": data.vEnergyKWh ?? 0,
+                "TS_CFA_HEATUP": data.vHeatUpRateCPerS ?? 0,
+                "TS_CFA_VOLT": data.vVoltage ?? 0,
+                "TS_CFA_MWA": data.vMainWashAmperage ?? 0,
+                "TS_CFA_FRA": data.vFinalRinseAmperage ?? 0,
+                "TS_CFA_CYCLET": data.vCycleTime ?? 0
             };
             return map[className] ?? 0;
         }
 
         function renderKPIs(data) {
-            if (!data || !Array.isArray(data.partLimits)) return;
-
-            const total = data.partLimits.length;
-            const pass = data.partLimits.filter(x => {
-                const act = classMapping(x.class, data);
-                return x.lowerLimit <= act && act <= x.upperLimit;
-            }).length;
-            const fail = total - pass;
-
-            // 3 columns in one row
-            document.getElementById("kpiContainer").innerHTML = `
-                    <div class="kpi-row">
-                        <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
-                        <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
-                        <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
-                    </div>
-                `;
+            if (!data) return;
+            updateVisualCheckKPI(); // centralized KPI calculation
         }
 
-        // Table
+        function updateVisualCheckKPI() {
+            if (!lastData) return;
+
+            const partLimits = Array.isArray(lastData.vPartLimits) ? lastData.vPartLimits : [];
+            const visualChecks = Array.isArray(lastData.vVisualChecks) ? lastData.vVisualChecks : [];
+            const total = partLimits.length + visualChecks.length;
+
+            const passPartLimits = partLimits.filter(x => {
+                const act = classMapping(x.class, lastData);
+                return x.lowerLimit <= act && act <= x.upperLimit;
+            }).length;
+
+            let passVisual = 0;
+            visualChecks.forEach(x => {
+                if (x.class !== 'TS_CFATEST') {
+                    const val = parseFloat(x.result);
+                    const lower = parseFloat(x.lowerLimit);
+                    const upper = parseFloat(x.upperLimit);
+                    if (!isNaN(val) && val >= lower && val <= upper) passVisual++;
+                } else {
+                    if (x.result === "checked") passVisual++;
+                }
+            });
+
+            const pass = passPartLimits + passVisual;
+            const fail = total - pass;
+
+            document.getElementById("kpiContainer").innerHTML = `
+            <div class="kpi-row">
+                <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
+                <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
+                <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+            </div>
+        `;
+        }
+
         function renderTable(data) {
             const table = document.getElementById("resultsTable");
             table.innerHTML = "";
-
             const header = table.insertRow();
             ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => header.insertCell().textContent = h);
 
-            data.partLimits.forEach((item, index) => {
+            data.vPartLimits.forEach((item, index) => {
                 const actual = classMapping(item.class, data);
                 const row = table.insertRow();
                 [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v ?? 0);
@@ -185,18 +235,80 @@
             });
         }
 
+        function renderVisualCheck(data) {
+            const table = document.getElementById("visualCheckTable");
+            table.innerHTML = "";
+
+            const header = table.insertRow();
+            ["P/N", "Desc.", "Result"].forEach((h, i) => {
+                const th = header.insertCell();
+                th.textContent = h;
+                th.style.fontWeight = "bold";
+                th.style.padding = "8px 12px";
+                th.style.textAlign = "left";
+                th.style.width = i === 0 ? "20%" : "40%";
+            });
+
+            data.vVisualChecks?.forEach((item, index) => {
+                const row = table.insertRow();
+                row.style.padding = "6px 0";
+
+                const pnCell = row.insertCell(); pnCell.textContent = item.part ?? ""; pnCell.style.padding = "6px 12px"; pnCell.style.textAlign = "left";
+                const descCell = row.insertCell(); descCell.textContent = item.description ?? ""; descCell.style.padding = "6px 12px"; descCell.style.textAlign = "left";
+                const resultCell = row.insertCell(); resultCell.style.padding = "6px 12px"; resultCell.style.textAlign = "left";
+
+                if (item.class !== 'TS_CFATEST') {
+                    const wrapper = document.createElement("div");
+                    wrapper.style.display = "flex"; wrapper.style.alignItems = "center"; wrapper.style.gap = "8px";
+
+                    const input = document.createElement("input");
+                    input.type = "text"; input.style.width = "60%"; input.style.height = "32px"; input.style.fontSize = "16px"; input.style.padding = "4px";
+                    input.value = item.result ?? ""; input.dataset.index = index;
+                    input.addEventListener("input", (e) => updateVisualKPI(e.target, index));
+
+                    const limitText = document.createElement("span");
+                    limitText.style.fontSize = "14px"; limitText.style.color = "#555";
+                    limitText.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
+
+                    wrapper.appendChild(input); wrapper.appendChild(limitText);
+                    resultCell.appendChild(wrapper);
+                } else {
+                    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
+                    checkbox.dataset.index = index; if (item.result === "checked") checkbox.checked = true;
+                    checkbox.addEventListener("change", (e) => updateVisualKPI(e.target, index));
+                    resultCell.appendChild(checkbox);
+                    resultCell.addEventListener("click", e => { if (e.target !== checkbox) checkbox.checked = !checkbox.checked; updateVisualKPI(checkbox, index); });
+                }
+            });
+
+            table.style.borderCollapse = "collapse";
+            table.querySelectorAll("td").forEach(td => td.style.border = "1px solid #ccc");
+        }
+
+        function updateVisualKPI(el, index) {
+            if (!lastData) return;
+            const item = lastData.vVisualChecks[index];
+            if (item.class !== 'TS_CFATEST') {
+                item.result = el.value;
+                const val = parseFloat(el.value);
+                const lower = parseFloat(item.lowerLimit);
+                const upper = parseFloat(item.upperLimit);
+                if (isNaN(val) || val < lower || val > upper) el.style.borderColor = "red";
+                else el.style.borderColor = "#ccc";
+            } else item.result = el.checked ? "checked" : "";
+            updateVisualCheckKPI();
+        }
+
         function highlightRow(index) {
             highlightedIndex = index;
             const tableRows = document.getElementById("resultsTable").rows;
-            for (let i = 1; i < tableRows.length; i++) {
-                tableRows[i].classList.toggle("highlight", i - 1 === index);
-            }
+            for (let i = 1; i < tableRows.length; i++) tableRows[i].classList.toggle("highlight", i - 1 === index);
             updateChartColors();
         }
 
         function updateChartColors() {
             if (!chartInstance || !lastData) return;
-            chartInstance.data.datasets[0].backgroundColor = lastData.partLimits.map((item, i) => {
+            chartInstance.data.datasets[0].backgroundColor = lastData.vPartLimits.map((item, i) => {
                 const actual = classMapping(item.class, lastData);
                 const fail = actual < item.lowerLimit || actual > item.upperLimit;
                 if (i === highlightedIndex) return "#f39c12";
@@ -205,81 +317,42 @@
             chartInstance.update();
         }
 
-        // Chart
         function renderChart(data) {
-            if (!data || !Array.isArray(data.partLimits)) return;
-
-            const labels = data.partLimits.map(x => x.class);
-            const actual = data.partLimits.map(x => classMapping(x.class, data));
-            const lower = data.partLimits.map(x => x.lowerLimit);
-            const upper = data.partLimits.map(x => x.upperLimit);
-
+            if (!data || !Array.isArray(data.vPartLimits)) return;
+            const labels = data.vPartLimits.map(x => x.class);
+            const actual = data.vPartLimits.map(x => classMapping(x, data));
+            const lower = data.vPartLimits.map(x => x.lowerLimit);
+            const upper = data.vPartLimits.map(x => x.upperLimit);
             if (chartInstance) chartInstance.destroy();
             const ctx = document.getElementById("limitChart");
             chartInstance = new Chart(ctx, {
                 type: "bar",
                 data: {
-                    labels,
-                    datasets: [
+                    labels, datasets: [
                         { label: "Actual", data: actual, backgroundColor: actual.map((v, i) => v < lower[i] || v > upper[i] ? "#e74c3c" : "#3498db") },
                         { label: "Lower Limit", data: lower, type: "line", borderColor: "green", fill: false },
                         { label: "Upper Limit", data: upper, type: "line", borderColor: "red", fill: false }
                     ]
                 },
                 options: {
-                    onClick: (e, elements) => { if (elements.length) highlightRow(elements[0].index); },
+                    onClick: (e, elms) => { if (elms.length) highlightRow(elms[0].index); },
                     plugins: { tooltip: { callbacks: { label: (ctx) => { const i = ctx.dataIndex; return `Actual: ${actual[i]}, Lower: ${lower[i]}, Upper: ${upper[i]}`; } } } }
                 }
             });
         }
 
-        function exportTable(format = "csv") {
-            if (!lastData) return;
-
-            const rows = [["Part", "Class", "Description", "Lower", "Actual", "Upper"]];
-            lastData.partLimits.forEach(item => {
-                const actual = classMapping(item.class, lastData);
-                rows.push([item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit]);
-            });
-
-            const fileName = `CFA_Audit_${document.getElementById("auditInput").value}`;
-
-            if (format === "csv") {
-                const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-                const link = document.createElement("a");
-                link.href = csvContent;
-                link.download = `${fileName}.csv`;
-                link.click();
-            } else if (format === "xlsx") {
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet(rows);
-                XLSX.utils.book_append_sheet(wb, ws, "Results");
-                XLSX.writeFile(wb, `${fileName}.xlsx`);
-            }
+        function openTab(evt, tabName) {
+            document.querySelectorAll(".tab-content").forEach(tab => tab.style.display = "none");
+            document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active"));
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.classList.add("active");
         }
 
-
-        function exportChart() {
-            if (!chartInstance) return;
-            const url = chartInstance.toBase64Image();
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `CFA_Audit_${document.getElementById("auditInput").value}_chart.png`;
-            link.click();
-        }
-
-        // Collapsible
         document.querySelectorAll(".collapsible").forEach(btn => {
-            btn.addEventListener("click", () => {
-                btn.classList.toggle("active");
-                const content = btn.nextElementSibling;
-                content.style.display = (content.style.display === "block") ? "none" : "block";
-            });
+            btn.addEventListener("click", () => { btn.classList.toggle("active"); const content = btn.nextElementSibling; content.style.display = (content.style.display === "block") ? "none" : "block"; });
         });
 
         document.getElementById("auditInput").addEventListener("keydown", e => { if (e.key === "Enter") loadResults(); });
-
     </script>
-
 </body>
 </html>

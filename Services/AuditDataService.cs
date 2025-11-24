@@ -748,7 +748,7 @@ WHERE ps2.part = @ParentPart
       'TS_CFA_FT2', 'TS_CFA_FT3', 'TS_CFA_FT4', 'TS_CFA_FT5',
       'TS_CFA_FF1', 'TS_CFA_FF2', 'TS_CFA_FF3', 'TS_CFA_FF4',
       'TS_CFA_FF5', 'TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER',
-      'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA'
+      'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA','TS_CFA_CYCLET'
   )
 ORDER BY ps.task_reference;
 ");
@@ -785,9 +785,71 @@ ORDER BY ps.task_reference;
             return limits;
     }
 
+        public async Task<List<VisualCheckItem>> GetVisualChecksAsync(string parentPart, string task = "4625")
+        {
+            var visualChecks = new List<VisualCheckItem>();
+
+            using var conn = await GetOpenConnectionAsync();
+
+            var sql = @"
+        SELECT
+    p.part,
+    p.description,
+    p.class,
+    pt.lower_limit_value,
+    pt.upper_limit_value
+FROM part_structure ps
+INNER JOIN part_structure ps2 ON ps2.part = ps.component AND ps.task = ps2.task
+INNER JOIN part p ON ps2.component = p.part
+INNER JOIN part_test pt ON p.part = pt.part
+WHERE ps.part='82170' AND ps.task='4625'
+AND ps.eff_start <= GETDATE() AND ps.eff_close >= GETDATE()
+AND ps2.eff_start <= GETDATE() AND ps2.eff_close >= GETDATE()
+AND p.class NOT IN (
+    'TS_CFA_INWT','TS_CFA_FVFR','TS_CFA_FVOL',
+    'TS_CFA_FT1','TS_CFA_FT2','TS_CFA_FT3','TS_CFA_FT4','TS_CFA_FT5',
+    'TS_CFA_FF1','TS_CFA_FF2','TS_CFA_FF3','TS_CFA_FF4','TS_CFA_FF5',
+    'TS_CFA_MWT','TS_CFA_FNT','TS_CFA_ENER','TS_CFA_HEATUP','TS_CFA_VOLT',
+    'TS_CFA_MWA','TS_CFA_CYCLET'
+)
+ORDER BY p.class,ps2.task_reference;
+    ";
+
+            using var cmd = new SqlCommand(sql, (SqlConnection)conn);
+            cmd.Parameters.AddWithValue("@ParentPart", parentPart);
+            cmd.Parameters.AddWithValue("@Task", task);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var className = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                // Get limits
+                double? lower = reader.IsDBNull(3) ? (double?)null : Convert.ToDouble(reader.GetValue(3));
+                double? upper = reader.IsDBNull(4) ? (double?)null : Convert.ToDouble(reader.GetValue(4));
+
+                // Conditional divide by 1000
+                if (className != null && (className == "TS_CFA_RINV" || className == "TS_CFA_SPYSPD" || className == "TS_CFA_RFS"))
+                {
+                    if (lower.HasValue) lower /= 1000;
+                    if (upper.HasValue) upper /= 1000;
+                }
+
+                visualChecks.Add(new VisualCheckItem
+                {
+                    Part = reader.IsDBNull(0) ? null : reader.GetString(0),
+                    Description = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    Class = className,
+                    lowerLimit = lower?.ToString(),
+                    upperLimit = upper?.ToString(),
+                });
+            }
+
+
+            return visualChecks;
+        }
 
 
 
-
-}
+    }
 }

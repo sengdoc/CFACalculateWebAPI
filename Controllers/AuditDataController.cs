@@ -98,27 +98,30 @@ namespace CFACalculateWebAPI.Controllers
                 // 6. Get Part Limits
                 var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "");
 
+                // 7. Get Part Limits
+                var visualChecks = await _service.GetVisualChecksAsync(DataProduct[1],"4625");
 
-                // 7. Return results
+                // 8. Return results
                 return Ok(new
                 {
-                    DataProduct = DataProduct[0],
-                    SampleRuns = sampleRuns,
-                    TimedFills = fillResult.TimedFills,
-                    FinalFills = fillResult.FinalFills,
-                    MainFillIndicators = fillResult.MainFillIndicators,
-                    FillVolume = totalFillVolume,
-                    FVFR = fvfrValue,
-                    IncomingWaterTemperature = incomingWaterTemp,
-                    HeatUpRateCPerS = heatUpRate,
-                    CycleTime = cycleTime,
-                    MainWashTemp = mainWashTemp,
-                    FinalRinseTemp = finalRinseTemp,
-                    EnergyKWh = energy,
-                    MainWashAmperage = mainWashAmperage,
-                    FinalRinseAmperage = finalRinseAmperage,
-                    Voltage = voltage,
-                    PartLimits = partLimits
+                    vDataProduct = DataProduct[0],
+                    vSampleRuns = sampleRuns,
+                    vTimedFills = fillResult.TimedFills,
+                    vFinalFills = fillResult.FinalFills,
+                    vMainFillIndicators = fillResult.MainFillIndicators,
+                    vFillVolume = totalFillVolume,
+                    vFVFR = fvfrValue,
+                    vIncomingWaterTemperature = incomingWaterTemp,
+                    vHeatUpRateCPerS = heatUpRate,
+                    vCycleTime = cycleTime,
+                    vMainWashTemp = mainWashTemp,
+                    vFinalRinseTemp = finalRinseTemp,
+                    vEnergyKWh = energy,
+                    vMainWashAmperage = mainWashAmperage,
+                    vFinalRinseAmperage = finalRinseAmperage,
+                    vVoltage = voltage,
+                    vPartLimits = partLimits,
+                    vVisualChecks = visualChecks
                 });
             }
             catch (Exception ex)
