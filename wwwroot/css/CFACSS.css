@@ -59,6 +59,7 @@ input {
     border: 1px solid #ccc;
     margin-right: 6px;
     outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
 }
 
     input:focus {
@@ -103,17 +104,6 @@ input {
             box-shadow: 0 0 6px rgba(52, 152, 219, 0.5);
         }
 
-    .select-wrapper::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        border-radius: 6px;
-        pointer-events: none;
-    }
-
 /* =======================
    LOADING OVERLAY
 ======================= */
@@ -131,14 +121,25 @@ input {
     z-index: 9999;
 }
 
-.loader {
+.spinner {
     border: 6px solid #f3f3f3;
     border-top: 6px solid #3498db;
     border-radius: 50%;
     width: 50px;
     height: 50px;
     animation: spin 1s linear infinite;
+    position: relative;
 }
+
+    .spinner img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+    }
 
 @keyframes spin {
     0% {
@@ -176,11 +177,21 @@ input {
     word-wrap: break-word;
 }
 
+.kpi-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
 .kpi-box {
     flex: 1;
-    min-width: 140px;
     text-align: center;
-    margin: 6px;
+    padding: 15px;
+    border-radius: 10px;
+    background: white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: all 0.3s ease-in-out;
 }
 
 .kpi-value {
@@ -225,13 +236,39 @@ tr:hover {
 .highlight {
     outline: 3px solid #f39c12;
 }
-
-.zero-fill {
-    background-color: #f9caca !important;
+/* =======================
+   TABS
+======================= */
+.tab-container {
+    margin-bottom: 10px;
 }
 
+.tab-button {
+    background-color: #f1f1f1;
+    border: 1px solid #ddd; /* subtle card-like border */
+    outline: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: 0.3s;
+    margin-right: 2px;
+    font-weight: 500; /* softer, noticeable text */
+    color: #2c3e50; /* darker text for readability */
+    border-radius: 6px 6px 0 0;
+}
+
+    .tab-button.active {
+        background-color: #3498db;
+        color: white;
+        font-weight: 600; /* slightly bolder when active */
+    }
+
+    .tab-button:hover:not(.active) {
+        background-color: #dfe6e9;
+    }
+
+
 /* =======================
-   COLLAPSIBLE SECTIONS
+   COLLAPSIBLE (STAR)
 ======================= */
 .collapsible {
     background: white;
@@ -243,17 +280,26 @@ tr:hover {
     margin-top: 12px;
     position: relative;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-    .collapsible:after {
-        content: '\25BC';
-        position: absolute;
-        right: 20px;
+    .collapsible .icon {
+        display: inline-block;
+        font-size: 16px;
+        color: #f1c40f; /* gold */
+        transition: transform 0.3s;
     }
 
-.active:after {
-    content: '\25B2';
-}
+    .collapsible.active .icon {
+        transform: scale(1.2);
+        content: "★";
+    }
+
+    .collapsible:not(.active) .icon::after {
+        content: "☆";
+    }
 
 .content {
     display: none;
@@ -264,25 +310,6 @@ tr:hover {
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     overflow: hidden;
 }
-
-/* =======================
-   SUMMARY / GRID CARDS
-======================= */
-.summary {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-}
-
-    .summary div {
-        background-color: #ecf0f1;
-        padding: 12px;
-        border-radius: 10px;
-        text-align: center;
-        font-size: 0.95rem;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    }
 
 /* =======================
    CHART
@@ -319,67 +346,3 @@ canvas {
         width: 100%;
     }
 }
-
-.spinner {
-    border: 6px solid #f3f3f3;
-    border-top: 6px solid #3498db;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    position: relative;
-}
-
-    .spinner img {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-    }
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
-}
-.kpi-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.kpi-box {
-    flex: 1;
-    text-align: center;
-    padding: 15px;
-    border-radius: 10px;
-    background: white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-/* Pretty dropdown */
-.select-wrapper {
-    display: inline-block;
-    position: relative;
-}
-
-    .select-wrapper select {
-        appearance: none;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-        padding: 6px 30px 6px 10px;
-        border-radius: 6px;
-        border: 1px solid #ccc;
-        font-size: 16px;
-        background: white url('data:image/svg+xml;utf8,<svg fill="%23333" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>') no-repeat right 10px center;
-        background-size: 12px;
-        cursor: pointer;
-    }
