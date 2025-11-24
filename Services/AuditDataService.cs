@@ -802,7 +802,7 @@ FROM part_structure ps
 INNER JOIN part_structure ps2 ON ps2.part = ps.component AND ps.task = ps2.task
 INNER JOIN part p ON ps2.component = p.part
 INNER JOIN part_test pt ON p.part = pt.part
-WHERE ps.part='82170' AND ps.task='4625'
+WHERE ps.part=@ParentPart AND ps.task=@Task
 AND ps.eff_start <= GETDATE() AND ps.eff_close >= GETDATE()
 AND ps2.eff_start <= GETDATE() AND ps2.eff_close >= GETDATE()
 AND p.class NOT IN (

@@ -196,7 +196,7 @@ function updateVisualKPI(el, index) {
 function renderChart(data) {
     if (!data || !Array.isArray(data.vPartLimits)) return;
     const labels = data.vPartLimits.map(x => x.class);
-    const actual = data.vPartLimits.map(x => classMapping(x, data));
+    const actual = data.vPartLimits.map(x => classMapping(x.class, data));
     const lower = data.vPartLimits.map(x => x.lowerLimit);
     const upper = data.vPartLimits.map(x => x.upperLimit);
 
