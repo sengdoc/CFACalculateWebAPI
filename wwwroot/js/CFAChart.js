@@ -83,11 +83,11 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
     const resultData = [];
 
     resultRows.forEach((row) => {
-        const partNo = row.getAttribute('data-part');        
+        const partNo = row.getAttribute('data-part');
         const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
         const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
         resultData.push({
-            PartNo: partNo,            
+            PartNo: partNo,
             ResultValue: resultAct,
             tstStatus: tstStatus
         });
@@ -98,15 +98,49 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
     const visualCheckData = [];
 
     visualCheckRows.forEach((row) => {
-        const partNo = row.getAttribute('data-part');        
+        const partNo = row.getAttribute('data-part');
         const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
         const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
         visualCheckData.push({
-            PartNo: partNo,            
+            PartNo: partNo,
             ResultValue: resultAct,
             tstStatus: tstStatus
         });
     });
+
+    // Check for null or empty fields before saving
+    if (!resultData || resultData.length === 0) {
+        alert("Result Data cannot be empty.");
+        return;
+    }
+    if (!visualCheckData || visualCheckData.length === 0) {
+        alert("Visual Check Data cannot be empty.");
+        return;
+    }
+
+    // Check if each resultData object contains required fields
+    for (let i = 1; i < resultData.length; i++) {
+        const item = resultData[i];
+        if (!item.PartNo || !item.ResultValue || !item.tstStatus) {
+            alert(`Result Data is missing required fields at index ${i + 1}.`);
+            return;
+        }
+    }
+
+    // Check if each visualCheckData object contains required fields
+    for (let i = 1; i < visualCheckData.length; i++) {
+        const item = visualCheckData[i];
+        if (!item.PartNo || item.ResultValue=="Init" || !item.tstStatus) {
+            alert(`Visual Check Data is missing required fields at index ${i + 1}.`);
+            return;
+        }
+    }
+
+    // Check for PartProduct data
+    if (!lastData || !lastData.vDataProduct) {
+        alert("Product data (PartProduct) cannot be empty.");
+        return;
+    }
 
     // Prepare the data to send to the backend
     const dataToSave = {
@@ -221,6 +255,8 @@ function renderVisualCheck(data) {
         const row = table.insertRow();
         row.setAttribute('data-part', item.part);  // Set the part number
        
+        row.setAttribute('data-status', "F");
+       
         // Create cells for part number, description, and result
         const pnCell = row.insertCell();
         pnCell.textContent = item.part ?? "";
@@ -253,7 +289,9 @@ function renderVisualCheck(data) {
 
             wrapper.appendChild(input); wrapper.appendChild(limitText);
             resultCell.appendChild(wrapper);
+            row.setAttribute('data-actual', "Init");
         } else {
+            
             // Handle TS_CFATEST items (checkbox for 'checked')
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
@@ -262,6 +300,7 @@ function renderVisualCheck(data) {
             checkbox.addEventListener("change", (e) => updateVisualKPI(e.target, index));
             resultCell.appendChild(checkbox);
             resultCell.addEventListener("click", e => { if (e.target !== checkbox) checkbox.checked = !checkbox.checked; updateVisualKPI(checkbox, index); });
+            row.setAttribute('data-actual', "uncheck");
         }
     });
 
@@ -292,8 +331,8 @@ function updateVisualKPI(el, index) {
         row.setAttribute('data-status', (isNaN(val) || val < lower || val > upper) ? "F" : "P");  // Set Status
     } else {
         item.result = el.checked ? "checked" : "";  // For TS_CFATEST, handle it as a checkbox
-        row.setAttribute('data-actual', el.checked ? "checked" : "");  // Set actual value for checkbox
-        row.setAttribute('data-status', el.checked ? "F" : "P");  // Set Status
+        row.setAttribute('data-actual', el.checked ? "checked" : "uncheck");  // Set actual value for checkbox
+        row.setAttribute('data-status', el.checked ? "P" : "F");  // Set Status
     }
 
     renderKPIs(lastData);  // Re-render the KPIs based on updated data

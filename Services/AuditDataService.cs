@@ -850,22 +850,122 @@ ORDER BY p.class,ps2.task_reference;
             return visualChecks;
         }
 
-        public async Task SaveTestResultAsync(SaveTestResultDTO result)
+        public async Task<string> GetRunNumberAsync(string SerialNo, string atask)
         {
-            // Map DTO to the entity
-            //var testResult = new TestResult
-            //{
-                
-            //     = JsonConvert.SerializeObject(result.vPartLimits),
-            //    VisualChecks = JsonConvert.SerializeObject(result.vVisualChecks)
-            //};
+            string run = "1";
 
-            // Save the entity to the database
-         //   _context.TestResults.Add(testResult);
-            await _context.SaveChangesAsync();
+            // SQL query to get the maximum run_number
+            string queryString = @"
+        SELECT MAX(run_number) AS run 
+        FROM test_result 
+        WHERE serial = @SerialNo AND task = @Task";
+
+            // Open the connection asynchronously
+            using var conn = await GetOpenConnectionAsync(); // Assuming you have this method to open the connection asynchronously
+            using var cmd = new SqlCommand(queryString, (SqlConnection)conn);
+
+            // Add parameters to the command to prevent SQL injection
+            cmd.Parameters.AddWithValue("@SerialNo", SerialNo);
+            cmd.Parameters.AddWithValue("@Task", atask);
+
+            // Execute the query asynchronously and read the result
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            if (await reader.ReadAsync())
+            {
+                // Check if the result is null or empty, and handle accordingly
+                if (reader.IsDBNull(reader.GetOrdinal("run")))
+                {
+                    run = "1";
+                }
+                else
+                {
+                    // Increment the max value of the 'run' field
+                    run = (reader.GetInt32(reader.GetOrdinal("run")) + 1).ToString();
+                }
+            }
+
+            return run;
         }
 
+        public async Task SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result)
+        {
+            // Check if vVisualResults and vAutoResults are not null and contain elements before removing the first item
+            if (result.vVisualResults != null && result.vVisualResults.Any())
+            {
+                result.vVisualResults.RemoveAt(0); // Remove first item if not empty
+            }
 
+            if (result.vAutoResults != null && result.vAutoResults.Any())
+            {
+                result.vAutoResults.RemoveAt(0); // Remove first item if not empty
+            }
+
+            using var conn = await GetOpenConnectionAsync();
+
+            // Build the SQL Insert Statement
+            var sql = @"
+INSERT INTO test_result 
+    (part, serial, task, task_reference, run_number, test_part, date_tested, test_result, test_status, station)
+VALUES 
+    (@Part, @Serial, @Task, @TaskReference, @RunNumber, @TestPart, GETDATE(), @TestResult, @TestStatus, @Station)";
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            // Helper method to add parameters to the command
+            void AddTestResultParameters(DbCommand command, string part, string serial, string task, string taskReference,
+                                         string runNumber, string testPart, string testResult, string testStatus, string station)
+            {
+                command.Parameters.Clear();
+                // Use null-coalescing operator to prevent null value for string parameters
+                command.Parameters.Add(new SqlParameter("@Part", part ?? ""));
+                command.Parameters.Add(new SqlParameter("@Serial", serial ?? ""));
+                command.Parameters.Add(new SqlParameter("@Task", task ?? ""));
+                command.Parameters.Add(new SqlParameter("@TaskReference", taskReference ?? ""));
+                command.Parameters.Add(new SqlParameter("@RunNumber", runNumber ?? ""));
+                command.Parameters.Add(new SqlParameter("@TestPart", testPart ?? "")); // Default to empty string if null
+                command.Parameters.Add(new SqlParameter("@TestResult", testResult ?? "")); // Default to empty string if null
+                command.Parameters.Add(new SqlParameter("@TestStatus", testStatus ?? "")); // Default to empty string if null
+                command.Parameters.Add(new SqlParameter("@Station", station ?? "")); // Default to empty string if null
+            }
+
+            // Check if vVisualResults is not null or empty before looping through it
+            if (result.vVisualResults != null && result.vVisualResults.Any())
+            {
+                foreach (var visualResult in result.vVisualResults)
+                {
+                    // Handle possible null values by checking each result
+                    string testPart = visualResult.PartNo ?? "";
+                    string testResult = visualResult.ResultValue ?? "";
+                    string testStatus = visualResult.tstStatus ?? "";
+
+                    // Set parameters for the insert operation with the runNo passed into the method
+                    AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+
+                    // Execute the insert command for each visual result
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+
+            // Check if vAutoResults is not null or empty before looping through it
+            if (result.vAutoResults != null && result.vAutoResults.Any())
+            {
+                foreach (var autoResult in result.vAutoResults)
+                {
+                    // Handle possible null values by checking each result
+                    string testPart = autoResult.PartNo ?? "";
+                    string testResult = autoResult.ResultValue ?? "";
+                    string testStatus = autoResult.tstStatus ?? "";
+
+                    // Set parameters for the insert operation with the runNo passed into the method
+                    AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+
+                    // Execute the insert command for each auto result
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+        }
 
 
 

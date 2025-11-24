@@ -148,18 +148,19 @@ namespace CFACalculateWebAPI.Controllers
                 }
 
                 // Extract the first part (82319)
-                string part1 = result.PartProduct.Substring(0, 5); // Starting at index 0, take 5 characters
+                string partCA = result.PartProduct.Substring(0, 5); // Starting at index 0, take 5 characters
 
                 // Extract the second part (EUV482568)
-                string part2 = result.PartProduct.Substring(6, 9); // Starting at index 6, take 9 characters
+                string SerialNo = result.PartProduct.Substring(6, 9); // Starting at index 6, take 9 characters
 
                 // Assuming your SaveTestResultAsync method works with result, you may want to modify it to include the extracted parts
                 // If you want to store them or perform any action with part1 and part2, you can do so here.
 
+                string runNo = await _service.GetRunNumberAsync(SerialNo, "4625");
                 // Save the test result asynchronously
-                await _service.SaveTestResultAsync(result);
+                await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
 
-                return Ok(new { message = "Test result saved successfully.", part1, part2 });
+                return Ok(new { message = "Test result saved successfully.", partCA, SerialNo });
             }
             catch (Exception ex)
             {
