@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Data.Common; // ✅ add this
 using System.Data.SqlClient;
 using System.Text;
+using Newtonsoft.Json;
 namespace CFACalculateWebAPI.Services
 {
     public class AuditDataService
@@ -848,6 +849,23 @@ ORDER BY p.class,ps2.task_reference;
 
             return visualChecks;
         }
+
+        public async Task SaveTestResultAsync(SaveTestResultDTO result)
+        {
+            // Map DTO to the entity
+            //var testResult = new TestResult
+            //{
+                
+            //     = JsonConvert.SerializeObject(result.vPartLimits),
+            //    VisualChecks = JsonConvert.SerializeObject(result.vVisualChecks)
+            //};
+
+            // Save the entity to the database
+         //   _context.TestResults.Add(testResult);
+            await _context.SaveChangesAsync();
+        }
+
+
 
 
 

@@ -76,6 +76,67 @@ async function loadResults() {
     }
 }
 
+// ----------------- SAVE RESULT -----------------
+document.getElementById('saveResultTestBtn').addEventListener('click', async function () {
+    // Collect data from Result Table
+    const resultRows = document.querySelectorAll('#resultsTable tbody tr');
+    const resultData = [];
+
+    resultRows.forEach((row) => {
+        const partNo = row.getAttribute('data-part');        
+        const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
+        const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
+        resultData.push({
+            PartNo: partNo,            
+            ResultValue: resultAct,
+            tstStatus: tstStatus
+        });
+    });
+
+    // Collect data from Visual Check Table
+    const visualCheckRows = document.querySelectorAll('#visualCheckTable tbody tr');
+    const visualCheckData = [];
+
+    visualCheckRows.forEach((row) => {
+        const partNo = row.getAttribute('data-part');        
+        const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
+        const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
+        visualCheckData.push({
+            PartNo: partNo,            
+            ResultValue: resultAct,
+            tstStatus: tstStatus
+        });
+    });
+
+    // Prepare the data to send to the backend
+    const dataToSave = {
+        vAutoResults: resultData,  // Data from Result Table
+        vVisualResults: visualCheckData,  // Data from Visual Check Table
+        PartProduct: lastData.vDataProduct
+    };
+
+    // Send the data to the backend
+    try {
+        const response = await fetch('api/CFACal/SaveResultTest', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(dataToSave)
+        });
+
+        if (response.ok) {
+            alert('Result saved successfully');
+        } else {
+            alert('Error saving result');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred while saving the result.');
+    }
+});
+
+
 // ----------------- KPI -----------------
 function renderKPIs(data) {
     if (!data) return;
@@ -117,14 +178,26 @@ function renderKPIs(data) {
 function renderTable(data) {
     const table = document.getElementById("resultsTable");
     table.innerHTML = "";
+
+    // Insert table header
     const header = table.insertRow();
     ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => header.insertCell().textContent = h);
 
+    // Insert rows with data and `data-part`  attributes
     data.vPartLimits.forEach((item, index) => {
         const actual = classMapping(item.class, data);
         const row = table.insertRow();
-        [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => row.insertCell().textContent = v ?? 0);
+        row.setAttribute('data-part', item.part);  // Set the part number
+
+        [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => {
+            row.insertCell().textContent = v ?? 0;
+        });
+        row.setAttribute('data-actual', actual);  // Set actual
+        // Style the row based on limit validation
         row.style.background = (actual < item.lowerLimit || actual > item.upperLimit) ? "#f8d7da" : "#d4edda";
+
+        row.setAttribute('data-status', (actual < item.lowerLimit || actual > item.upperLimit) ? "F" : "P");  // Set Status
+        // Add click event to highlight row
         row.addEventListener("click", () => highlightRow(index));
     });
 }
@@ -133,6 +206,7 @@ function renderVisualCheck(data) {
     const table = document.getElementById("visualCheckTable");
     table.innerHTML = "";
 
+    // Insert table header
     const header = table.insertRow();
     ["P/N", "Desc.", "Result"].forEach(h => {
         const th = header.insertCell();
@@ -142,12 +216,27 @@ function renderVisualCheck(data) {
         th.style.textAlign = "left";
     });
 
+    // Insert rows with data and `data-part` attribute
     data.vVisualChecks?.forEach((item, index) => {
         const row = table.insertRow();
-        const pnCell = row.insertCell(); pnCell.textContent = item.part ?? ""; pnCell.style.padding = "6px 12px"; pnCell.style.textAlign = "left";
-        const descCell = row.insertCell(); descCell.textContent = item.description ?? ""; descCell.style.padding = "6px 12px"; descCell.style.textAlign = "left";
-        const resultCell = row.insertCell(); resultCell.style.padding = "6px 12px"; resultCell.style.textAlign = "left";
+        row.setAttribute('data-part', item.part);  // Set the part number
+       
+        // Create cells for part number, description, and result
+        const pnCell = row.insertCell();
+        pnCell.textContent = item.part ?? "";
+        pnCell.style.padding = "6px 12px";
+        pnCell.style.textAlign = "left";
 
+        const descCell = row.insertCell();
+        descCell.textContent = item.description ?? "";
+        descCell.style.padding = "6px 12px";
+        descCell.style.textAlign = "left";
+
+        const resultCell = row.insertCell();
+        resultCell.style.padding = "6px 12px";
+        resultCell.style.textAlign = "left";
+
+        // Handle non-TS_CFATEST items
         if (item.class !== 'TS_CFATEST') {
             const wrapper = document.createElement("div");
             wrapper.style.display = "flex"; wrapper.style.alignItems = "center"; wrapper.style.gap = "8px";
@@ -155,6 +244,7 @@ function renderVisualCheck(data) {
             const input = document.createElement("input");
             input.type = "text"; input.style.width = "60%"; input.style.height = "32px"; input.style.fontSize = "16px"; input.style.padding = "4px";
             input.value = item.result ?? ""; input.dataset.index = index;
+            
             input.addEventListener("input", (e) => updateVisualKPI(e.target, index));
 
             const limitText = document.createElement("span");
@@ -164,8 +254,11 @@ function renderVisualCheck(data) {
             wrapper.appendChild(input); wrapper.appendChild(limitText);
             resultCell.appendChild(wrapper);
         } else {
-            const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
+            // Handle TS_CFATEST items (checkbox for 'checked')
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
             checkbox.dataset.index = index; if (item.result === "checked") checkbox.checked = true;
+          
             checkbox.addEventListener("change", (e) => updateVisualKPI(e.target, index));
             resultCell.appendChild(checkbox);
             resultCell.addEventListener("click", e => { if (e.target !== checkbox) checkbox.checked = !checkbox.checked; updateVisualKPI(checkbox, index); });
@@ -179,18 +272,33 @@ function renderVisualCheck(data) {
 // ----------------- UPDATE VISUAL KPI -----------------
 function updateVisualKPI(el, index) {
     if (!lastData) return;
+
     const item = lastData.vVisualChecks[index];
+    const row = el.closest("tr"); // Get the closest row element
+
+    // If the item class is not 'TS_CFATEST', treat it as a regular input
     if (item.class !== 'TS_CFATEST') {
-        item.result = el.value;
+        item.result = el.value;  // Update the result with the input value
+
         const val = parseFloat(el.value);
         const lower = parseFloat(item.lowerLimit);
         const upper = parseFloat(item.upperLimit);
+
+        // Check if the input value is within the allowed limits
         el.style.borderColor = (isNaN(val) || val < lower || val > upper) ? "red" : "#ccc";
+
+        // Set the actual value as the input value
+        row.setAttribute('data-actual', el.value);
+        row.setAttribute('data-status', (isNaN(val) || val < lower || val > upper) ? "F" : "P");  // Set Status
     } else {
-        item.result = el.checked ? "checked" : "";
+        item.result = el.checked ? "checked" : "";  // For TS_CFATEST, handle it as a checkbox
+        row.setAttribute('data-actual', el.checked ? "checked" : "");  // Set actual value for checkbox
+        row.setAttribute('data-status', el.checked ? "F" : "P");  // Set Status
     }
-    renderKPIs(lastData);
+
+    renderKPIs(lastData);  // Re-render the KPIs based on updated data
 }
+
 
 // ----------------- CHART -----------------
 function renderChart(data) {

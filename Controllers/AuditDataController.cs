@@ -129,5 +129,44 @@ namespace CFACalculateWebAPI.Controllers
                 return BadRequest(new { message = "An error occurred while processing the request.", detail = ex.Message });
             }
         }
+
+
+        [HttpPost("SaveResultTest")]
+        public async Task<IActionResult> SaveResultTest([FromBody] SaveTestResultDTO result)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(result.PartProduct))
+                {
+                    return BadRequest(new { message = "PartProduct cannot be null or empty." });
+                }
+
+                // Ensure the string has enough length to safely extract the parts
+                if (result.PartProduct.Length < 15)
+                {
+                    return BadRequest(new { message = "PartProduct is too short to extract both parts." });
+                }
+
+                // Extract the first part (82319)
+                string part1 = result.PartProduct.Substring(0, 5); // Starting at index 0, take 5 characters
+
+                // Extract the second part (EUV482568)
+                string part2 = result.PartProduct.Substring(6, 9); // Starting at index 6, take 9 characters
+
+                // Assuming your SaveTestResultAsync method works with result, you may want to modify it to include the extracted parts
+                // If you want to store them or perform any action with part1 and part2, you can do so here.
+
+                // Save the test result asynchronously
+                await _service.SaveTestResultAsync(result);
+
+                return Ok(new { message = "Test result saved successfully.", part1, part2 });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "An error occurred while saving the result.", detail = ex.Message });
+            }
+        }
+
+
     }
 }
