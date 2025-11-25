@@ -231,10 +231,26 @@ ORDER BY FILLS;";
         // Calculate Final Fills
         private TimedFinalFillResult CalculateFinalFills(List<double> timedFills)
         {
+
+            //var timedFillsF = new List<double>();
+            //timedFillsF.Add(2.19);  // M
+            //timedFillsF.Add(0.31);  // T
+            //timedFillsF.Add(0.43);  // F
+            //timedFillsF.Add(0.42);  // F
+            //timedFillsF.Add(0.43);  // F
+            //timedFillsF.Add(0.42);  // F
+            //timedFillsF.Add(2.00);  // M
+            //timedFillsF.Add(0.51);  // T
+            //timedFillsF.Add(1.99);  // M
+            //timedFillsF.Add(0.30);  // T
+
+            //timedFills = timedFillsF;
             int n = timedFills.Count;
+
             var RetTimedFills = new List<double>(new double[n]);
             var RetFinalFills = new List<double>(new double[n]);
             var gRunNo = new List<int>(new int[n]);
+
 
             int j = 0;
 
@@ -249,15 +265,24 @@ ORDER BY FILLS;";
                     j++;
                 }
             }
+            //gRunNo = Main Fill
+          
 
-            // Final Fill
+
+            // Final Fill   25-11-2025
             j = 0;
-            for (int i = 0; i < n - 1; i++)
+            for (int i = 0; i < n; i++)
             {
                 if (timedFills[i] > 1)
                 {
-                    RetFinalFills[j] = timedFills[i] + timedFills[i + 1];
-                    j++;
+                    RetFinalFills[j] = timedFills[i];
+
+                        j++;
+                } else
+                {
+                    //TOP UP
+                    RetFinalFills[j-1] = RetFinalFills[j-1]+timedFills[i];
+
                 }
             }
 
