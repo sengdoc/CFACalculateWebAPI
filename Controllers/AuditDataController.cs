@@ -158,7 +158,14 @@ namespace CFACalculateWebAPI.Controllers
 
                 string runNo = await _service.GetRunNumberAsync(SerialNo, "4625");
                 // Save the test result asynchronously
-                await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
+              bool isOK =  await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
+                if (isOK)
+                {
+                    await _service.SaveTaskResultAsync(partCA, SerialNo, runNo, "4625");
+                }else
+                {
+                    return BadRequest(new { message = "Failed to save the test result." });
+                }
 
                 return Ok(new { message = "Test result saved successfully.", partCA, SerialNo });
             }

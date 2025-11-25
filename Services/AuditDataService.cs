@@ -888,8 +888,10 @@ ORDER BY p.class,ps2.task_reference;
             return run;
         }
 
-        public async Task SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result)
+        public async Task<bool> SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result)
         {
+            bool isSuccess = false;
+
             // Check if vVisualResults and vAutoResults are not null and contain elements before removing the first item
             if (result.vVisualResults != null && result.vVisualResults.Any())
             {
@@ -903,69 +905,142 @@ ORDER BY p.class,ps2.task_reference;
 
             using var conn = await GetOpenConnectionAsync();
 
-            // Build the SQL Insert Statement
-            var sql = @"
-INSERT INTO test_result 
-    (part, serial, task, task_reference, run_number, test_part, date_tested, test_result, test_status, station)
-VALUES 
-    (@Part, @Serial, @Task, @TaskReference, @RunNumber, @TestPart, GETDATE(), @TestResult, @TestStatus, @Station)";
+            // Start a transaction to ensure all operations are atomic
+            using var transaction = await conn.BeginTransactionAsync();
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-
-            // Helper method to add parameters to the command
-            void AddTestResultParameters(DbCommand command, string part, string serial, string task, string taskReference,
-                                         string runNumber, string testPart, string testResult, string testStatus, string station)
+            try
             {
-                command.Parameters.Clear();
-                // Use null-coalescing operator to prevent null value for string parameters
-                command.Parameters.Add(new SqlParameter("@Part", part ?? ""));
-                command.Parameters.Add(new SqlParameter("@Serial", serial ?? ""));
-                command.Parameters.Add(new SqlParameter("@Task", task ?? ""));
-                command.Parameters.Add(new SqlParameter("@TaskReference", taskReference ?? ""));
-                command.Parameters.Add(new SqlParameter("@RunNumber", runNumber ?? ""));
-                command.Parameters.Add(new SqlParameter("@TestPart", testPart ?? "")); // Default to empty string if null
-                command.Parameters.Add(new SqlParameter("@TestResult", testResult ?? "")); // Default to empty string if null
-                command.Parameters.Add(new SqlParameter("@TestStatus", testStatus ?? "")); // Default to empty string if null
-                command.Parameters.Add(new SqlParameter("@Station", station ?? "")); // Default to empty string if null
-            }
+                // Build the SQL Insert Statement for test_result
+                var sql = @"
+        INSERT INTO test_result 
+            (part, serial, task, task_reference, run_number, test_part, date_tested, test_result, test_status, station)
+        VALUES 
+            (@Part, @Serial, @Task, @TaskReference, @RunNumber, @TestPart, GETDATE(), @TestResult, @TestStatus, @Station)";
 
-            // Check if vVisualResults is not null or empty before looping through it
-            if (result.vVisualResults != null && result.vVisualResults.Any())
-            {
-                foreach (var visualResult in result.vVisualResults)
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+                cmd.Transaction = transaction; // Associate the command with the transaction
+
+                // Helper method to add parameters to the command
+                void AddTestResultParameters(DbCommand command, string part, string serial, string task, string taskReference,
+                                             string runNumber, string testPart, string testResult, string testStatus, string station)
                 {
-                    // Handle possible null values by checking each result
-                    string testPart = visualResult.PartNo ?? "";
-                    string testResult = visualResult.ResultValue ?? "";
-                    string testStatus = visualResult.tstStatus ?? "";
-
-                    // Set parameters for the insert operation with the runNo passed into the method
-                    AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
-
-                    // Execute the insert command for each visual result
-                    await cmd.ExecuteNonQueryAsync();
+                    command.Parameters.Clear();
+                    command.Parameters.Add(new SqlParameter("@Part", part ?? ""));
+                    command.Parameters.Add(new SqlParameter("@Serial", serial ?? ""));
+                    command.Parameters.Add(new SqlParameter("@Task", task ?? ""));
+                    command.Parameters.Add(new SqlParameter("@TaskReference", taskReference ?? ""));
+                    command.Parameters.Add(new SqlParameter("@RunNumber", runNumber ?? ""));
+                    command.Parameters.Add(new SqlParameter("@TestPart", testPart ?? ""));
+                    command.Parameters.Add(new SqlParameter("@TestResult", testResult ?? ""));
+                    command.Parameters.Add(new SqlParameter("@TestStatus", testStatus ?? ""));
+                    command.Parameters.Add(new SqlParameter("@Station", station ?? ""));
                 }
-            }
 
-            // Check if vAutoResults is not null or empty before looping through it
-            if (result.vAutoResults != null && result.vAutoResults.Any())
-            {
-                foreach (var autoResult in result.vAutoResults)
+                // Insert for vVisualResults
+                if (result.vVisualResults != null && result.vVisualResults.Any())
                 {
-                    // Handle possible null values by checking each result
-                    string testPart = autoResult.PartNo ?? "";
-                    string testResult = autoResult.ResultValue ?? "";
-                    string testStatus = autoResult.tstStatus ?? "";
+                    foreach (var visualResult in result.vVisualResults)
+                    {
+                        string testPart = visualResult.PartNo ?? "";
+                        string testResult = visualResult.ResultValue ?? "";
+                        string testStatus = visualResult.tstStatus ?? "";
 
-                    // Set parameters for the insert operation with the runNo passed into the method
-                    AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
-
-                    // Execute the insert command for each auto result
-                    await cmd.ExecuteNonQueryAsync();
+                        // Set parameters and execute the insert command for each visual result
+                        AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+                        await cmd.ExecuteNonQueryAsync();
+                    }
                 }
+
+                // Insert for vAutoResults
+                if (result.vAutoResults != null && result.vAutoResults.Any())
+                {
+                    foreach (var autoResult in result.vAutoResults)
+                    {
+                        string testPart = autoResult.PartNo ?? "";
+                        string testResult = autoResult.ResultValue ?? "";
+                        string testStatus = autoResult.tstStatus ?? "";
+
+                        // Set parameters and execute the insert command for each auto result
+                        AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+
+                // Commit the transaction after all inserts are successful
+                await transaction.CommitAsync();
+                isSuccess = true;
             }
+            catch (Exception ex)
+            {
+                // In case of error, roll back the transaction
+                await transaction.RollbackAsync();
+                // Log the exception for debugging purposes
+                Console.WriteLine($"Error occurred: {ex.Message}");
+            }
+
+            return isSuccess;
         }
+
+
+        public async Task SaveTaskResultAsync(string partCa, string SerialNo, string runNo, string task)
+        {
+            using var conn = await GetOpenConnectionAsync();
+
+            // Step 1: Check the test_status of all part-tests in test_result where the task matches
+            var checkStatusSql = @"
+        SELECT DISTINCT test_status
+        FROM test_result
+        WHERE part = @Part 
+            AND serial = @Serial 
+            AND run_number = @RunNumber 
+            AND task = @Task";
+
+            using var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText = checkStatusSql;
+            checkCmd.Parameters.Add(new SqlParameter("@Part", partCa ?? ""));
+            checkCmd.Parameters.Add(new SqlParameter("@Serial", SerialNo ?? ""));
+            checkCmd.Parameters.Add(new SqlParameter("@RunNumber", runNo ?? ""));
+            checkCmd.Parameters.Add(new SqlParameter("@Task", task ?? ""));
+
+            var testStatuses = new List<string>();
+            using (var reader = await checkCmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    testStatuses.Add(reader.GetString(0));
+                }
+            }
+
+            // Step 2: Determine task status ('P' or 'F')
+            string taskStatus = testStatuses.Contains("F") ? "F" : "P";
+
+            // Step 3: Insert or update task_result based on part, serial, run_number, and task
+            var taskResultSql = @"
+        IF EXISTS (SELECT 1 FROM task_result WHERE part = @Part AND serial = @Serial AND task = @Task)
+        BEGIN
+            UPDATE task_result
+            SET task_status = @TaskStatus, date_tested = GETDATE(),run_number = @RunNumber
+            WHERE part = @Part AND serial = @Serial AND task = @Task
+        END
+        ELSE
+        BEGIN
+            INSERT INTO task_result (part, serial, task, run_number, date_tested, task_status)
+            VALUES (@Part, @Serial, @Task, @RunNumber, GETDATE(), @TaskStatus)
+        END";
+
+            using var taskCmd = conn.CreateCommand();
+            taskCmd.CommandText = taskResultSql;
+            taskCmd.Parameters.Add(new SqlParameter("@Part", partCa ?? ""));
+            taskCmd.Parameters.Add(new SqlParameter("@Serial", SerialNo ?? ""));
+            taskCmd.Parameters.Add(new SqlParameter("@RunNumber", runNo ?? ""));
+            taskCmd.Parameters.Add(new SqlParameter("@Task", task ?? ""));
+            taskCmd.Parameters.Add(new SqlParameter("@TaskStatus", taskStatus ?? ""));
+
+            // Execute the command to insert or update the task_result
+            await taskCmd.ExecuteNonQueryAsync();
+        }
+
 
 
 
