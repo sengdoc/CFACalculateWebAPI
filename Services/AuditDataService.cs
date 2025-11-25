@@ -2,10 +2,11 @@ using CFACalculateWebAPI.Data;
 using CFACalculateWebAPI.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
+using System;
 using System.Data.Common; // ✅ add this
 using System.Data.SqlClient;
 using System.Text;
-using Newtonsoft.Json;
 namespace CFACalculateWebAPI.Services
 {
     public class AuditDataService
@@ -231,68 +232,109 @@ ORDER BY FILLS;";
         // Calculate Final Fills
         private TimedFinalFillResult CalculateFinalFills(List<double> timedFills)
         {
-
-            //var timedFillsF = new List<double>();
-            //timedFillsF.Add(2.19);  // M
-            //timedFillsF.Add(0.31);  // T
-            //timedFillsF.Add(0.43);  // F
-            //timedFillsF.Add(0.42);  // F
-            //timedFillsF.Add(0.43);  // F
-            //timedFillsF.Add(0.42);  // F
-            //timedFillsF.Add(2.00);  // M
-            //timedFillsF.Add(0.51);  // T
-            //timedFillsF.Add(1.99);  // M
-            //timedFillsF.Add(0.30);  // T
-
-            //timedFills = timedFillsF;
+            //List<double> timedFills = new List<double> { 2.34, 2.02, 2.03 };
             int n = timedFills.Count;
 
+            // Initialize result lists
             var RetTimedFills = new List<double>(new double[n]);
             var RetFinalFills = new List<double>(new double[n]);
-            var gRunNo = new List<int>(new int[n]);
+            var gRunNoMainF = new List<int>(new int[n]);
+            var gRunNoTopupF = new List<int>(new int[n]);
+
+            // Threshold values for classification
+            double R1 = 2.20;
+            double R2 = 2.00;
+            double R3 = 2.00;
+            double R4 = 0.00;
+            double R5 = 0.00;
+
+            // Variables to track "Main Fill" and "Topup"
+            int mainFillCount = 0;
+
+            // Iterate through each value in the timedFills list
+            for (int i = 0; i < n; i++)
+            {
+                double threshold = 0;
+
+                // Determine the threshold based on the round
+                if (mainFillCount == 0)
+                    threshold = R1;
+                else if (mainFillCount == 1)
+                    threshold = R2;
+                else if (mainFillCount == 2)
+                    threshold = R3;
+                else if (mainFillCount == 3)
+                    threshold = R4;
+                else if (mainFillCount == 4)
+                    threshold = R5;
+
+                string classification = "Topup";  // Default classification
+
+                // Check if the current fill value is within ±0.2 range of the threshold for "Main Fill"
+                if (threshold != 0 && timedFills[i] >= (threshold - 0.2) && timedFills[i] <= (threshold + 0.2))
+                {
+                    classification = "Main Fill";
+                    gRunNoMainF[i] = 1;  // Mark as "Main Fill"
+                    mainFillCount++;      // Increment mainFill count
+                }
+                else
+                {
+                    classification = "Topup";
+                    gRunNoTopupF[i] = 1;  // Mark as "Topup"
+                }
+              
+            }
+            for(int x=0;x<n;x++)
+            {
+                
+                if (gRunNoMainF[x] == 1)
+                {
+                    RetTimedFills[x] = timedFills[x];
+                }
+               
+            }
+            
+
+
+
+
+            RetTimedFills = RetTimedFills.Where(x => x != 0).ToList();
 
 
             int j = 0;
-
-            // Timed Fill
-            for (int i = 0; i < n; i++)
+            bool isFinalFill = false;
+            for (int y = 0; y < n; y++)
             {
-                gRunNo[i] = 0;
-                if (timedFills[i] > 1) // >1 = Main Fill
+                if (gRunNoTopupF[y] == 0)
                 {
-                    RetTimedFills[j] = timedFills[i];
-                    gRunNo[i] = 1;
+                    isFinalFill = false;
+                    RetFinalFills[j] = timedFills[y];
                     j++;
                 }
-            }
-            //gRunNo = Main Fill
-          
-
-
-            // Final Fill   25-11-2025
-            j = 0;
-            for (int i = 0; i < n; i++)
-            {
-                if (timedFills[i] > 1)
+                else if (gRunNoTopupF[y] == 1 && isFinalFill == false)
                 {
-                    RetFinalFills[j] = timedFills[i];
+                    RetFinalFills[j - 1] += timedFills[y];
+                    isFinalFill = true;
 
-                        j++;
-                } else
+                }
+                else if (gRunNoTopupF[y] == 1 && isFinalFill == true)
                 {
-                    //TOP UP
-                    RetFinalFills[j-1] = RetFinalFills[j-1]+timedFills[i];
+                    RetFinalFills[j - 1] += timedFills[y];
+                    isFinalFill = true;
 
                 }
             }
-
+            RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
+            // Return the result as an object of TimedFinalFillResult
             return new TimedFinalFillResult
             {
                 TimedFills = RetTimedFills,
                 FinalFills = RetFinalFills,
-                MainFillIndicators = gRunNo
+                MainFillIndicators = gRunNoMainF
             };
         }
+
+
 
         // Calculate FVFR (converted from Delphi calFVFRN)
         public async Task<double> CalFVFRNAsync(string? serial, string? auditId, int mainFillTimes, List<(int start, int end)> mainFillRanges)
