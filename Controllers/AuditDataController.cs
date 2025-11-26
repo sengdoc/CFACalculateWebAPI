@@ -52,7 +52,7 @@ namespace CFACalculateWebAPI.Controllers
 
                 // 3. Fill Calculations & Check Number of Additional Fills
                 var endSampleNos = sampleRuns.Select(sr => sr.EndSampleRun).ToList();
-                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[1],DataProduct[2], auditId, endSampleNos);
+                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[1],DataProduct[4], DataProduct[2], auditId, endSampleNos);
                 double totalFillVolume = fillResult.FinalFills?.Sum() ?? 0;
 
                 // 4. Main Fill Info

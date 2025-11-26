@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System;
+using System.Data;
 using System.Data.Common; // ✅ add this
 using System.Data.SqlClient;
 using System.Security.Cryptography;
@@ -29,22 +30,22 @@ namespace CFACalculateWebAPI.Services
             _context = context; // ✅ injected DbContext ensures connection string is set
         }
 
-private async Task<DbConnection> GetOpenConnectionAsync()
-{
-    var conn = _context.Database.GetDbConnection();
-
-    if (conn.State != System.Data.ConnectionState.Open)
-    {
-        // Set connection string only if not set
-        if (string.IsNullOrEmpty(conn.ConnectionString))
+        private async Task<DbConnection> GetOpenConnectionAsync()
         {
-            conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
-        }
-        await conn.OpenAsync();
-    }
+            var conn = _context.Database.GetDbConnection();
 
-    return conn;
-}
+            if (conn.State != System.Data.ConnectionState.Open)
+            {
+                // Set connection string only if not set
+                if (string.IsNullOrEmpty(conn.ConnectionString))
+                {
+                    conn.ConnectionString = "Server=redbow;Database=Thailis;User Id=thrftest;Password=thrftest;TrustServerCertificate=True;";
+                }
+                await conn.OpenAsync();
+            }
+
+            return conn;
+        }
 
 
         // Init Sample Run Numbers        
@@ -151,15 +152,16 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                resultList.Add(reader.GetString(0) + " " + reader.GetString(1)+" "+ reader.GetString(2));
+                resultList.Add(reader.GetString(0) + " " + reader.GetString(1) + " " + reader.GetString(2));
                 resultList.Add(reader.GetString(0));
                 resultList.Add(reader.GetString(1));
                 resultList.Add(reader.GetString(3));
+                resultList.Add(reader.GetString(2));
             }
             return resultList.ToArray();
         }
         // Calculate Timed Final Fills
-        public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? partCA,string? serial, string? auditId, List<int> endSampleNos)
+        public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? partCA,string? partCADes, string? serial, string? auditId, List<int> endSampleNos)
         {
             var timedFills = new List<double>();
 
@@ -228,15 +230,52 @@ ORDER BY FILLS;";
             }
 
             // ===== Calculate Timed Final FillResult =====
-            var finalFillResult = CalculateTimedFinalFills(partCA, timedFills);
-
+            
+            var finalFillResult =  CalculateTimedFinalFillsAsync(partCA, partCADes, timedFills);
             return finalFillResult;
         }
 
         // Calculate Final Fills
-        private TimedFinalFillResult CalculateTimedFinalFills(string? partCA,List<double> timedFills)
+        private  TimedFinalFillResult CalculateTimedFinalFillsAsync(string? partCA,string? partCADes, List<double> timedFills)
         {
-            //List<double> timedFills = new List<double> { 2.34, 2.02, 2.03 };
+            //Testing FLUSH -----------
+            //            List<double> timedFillsForce = new List<double>
+            //{
+            //    2.168485394,
+            //    0.304273066,
+            //    0.417022391,
+            //    0.424057904,
+            //    0.427102543,
+            //    0.421258652,
+            //    1.94988262,
+            //    0.497105106,
+            //    1.962536001,
+            //    0.299667137
+            //};
+            //            timedFills = timedFillsForce;
+            //            partCA = "81627";
+            //            partCADes = "DD60DCHX9 FP TW";
+            //------------------
+
+            //Testing FLUSH -----------
+//            List<double> timedFillsForce = new List<double>
+//{
+//    1.591855198,
+//    0.674322625,
+//    0.43597485,
+//    0.438507232,
+//    0.439409727,
+//    0.43517365,
+//    1.494379927,
+//    0.570845662,
+//    1.493059314,
+//    0.469014047
+//};
+
+//            timedFills = timedFillsForce;
+//            partCA = "82163";
+//            partCADes = "DD24DTX6HI1 US";
+            //------------------
             int n = timedFills.Count;
             int NoOfFills = n;
             // Initialize result lists
@@ -248,12 +287,15 @@ ORDER BY FILLS;";
 
             var gRunNoAll = new List<int>(new int[n]);
 
+
             
 
 
+
+
             // Threshold values for classification
-         //   var rst =  FillInitialTargetsData.Data.TryGetValue(partCA, out var DataResult);
-       
+            //   var rst =  FillInitialTargetsData.Data.TryGetValue(partCA, out var DataResult);
+
             if (string.IsNullOrWhiteSpace(partCA))
             {
                 throw new ArgumentException("Part CA cannot be null or empty.");
@@ -261,13 +303,14 @@ ORDER BY FILLS;";
 
             var rst = FillInitialTargetsData.Data.TryGetValue(partCA, out var DataResult);
 
-           
-            
+            // Remove "DISHDRAWER" if exists (case-insensitive)
+            partCADes = partCADes?.Replace("DISHDRAWER", "", StringComparison.OrdinalIgnoreCase).Trim();
+
             if (rst == false)
             {
                 throw new ArgumentException("Part CA not found in FillInitialTargetsData.");
             }
-            double? thresholdAI = 0; 
+            double? thresholdAI = 0;
             double? thresholdAN = 0;
             double? thresholdAS = 0;
             double? thresholdAX = 0;
@@ -282,6 +325,7 @@ ORDER BY FILLS;";
             }
             int mainFillCount = 0;
             int flushHistoryCount = 0;
+          
 
             for (int index = 0; index < timedFills.Count; index++)
             {
@@ -293,8 +337,11 @@ ORDER BY FILLS;";
                     thresholdAI, thresholdAN, thresholdAS, thresholdAX, thresholdBC,
                     ref mainFillCount,
                     ref flushHistoryCount,
-                    resultB6: "DD60D2NX9H FP AA" // Example value containing H
+                    partCADes ?? "" //" DD60DCHX9 FP TW" // Example value containing H
                 );
+
+            
+                //select* From part where part = '81627'
 
                 Console.WriteLine($"Check {value} → {classification}");
                 if (classification == "Main Fill")
@@ -353,16 +400,16 @@ ORDER BY FILLS;";
             }
             RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
 
-            
-           
+
+
             bool HaveFlush = gRunNoAll.Any(x => x == 3);
             var rst2 = NoOfFillsData.Data.TryGetValue(partCA, out var NoOfFillBOM);
             //Logic check Additional Fills
             int AdditionalFills = 0;
             AdditionalFills = NoOfFills - ((int)NoOfFillBOM);
             if (HaveFlush)
-            { AdditionalFills = AdditionalFills - 4; }    
-                
+            { AdditionalFills = AdditionalFills - 4; }
+
             // Return the result as an object of TimedFinalFillResult
             return new TimedFinalFillResult
             {
@@ -613,21 +660,21 @@ FROM dat6, dat7, dat8;
             return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
         }
 
-public async Task<TemperatureResult> CalTemperatureTNAsync(
-    string? serial,
-    string? auditId,
-    int[] gStartNoMain,
-    int[] gEndNoMain,
-    int mainFillTimes)
-{
-    var result = new TemperatureResult();
+        public async Task<TemperatureResult> CalTemperatureTNAsync(
+            string? serial,
+            string? auditId,
+            int[] gStartNoMain,
+            int[] gEndNoMain,
+            int mainFillTimes)
+        {
+            var result = new TemperatureResult();
 
             using var conn = await GetOpenConnectionAsync();
-          
-    for (int i = 0; i < mainFillTimes; i++)
-    {
-        // ✅ Build dynamic SQL for each section
-        string baseSql = @"
+
+            for (int i = 0; i < mainFillTimes; i++)
+            {
+                // ✅ Build dynamic SQL for each section
+                string baseSql = @"
             WITH basedata AS (
                 SELECT 
                     ROW_NUMBER() OVER (ORDER BY seconds ASC) AS SampleRun,
@@ -635,8 +682,8 @@ public async Task<TemperatureResult> CalTemperatureTNAsync(
                     waterusage, temperature, waterpressure, watertemperature
                 FROM cfa_data_excel
                 WHERE auditid = " + (string.IsNullOrEmpty(auditId)
-                    ? "(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
-                    : "@AuditId") + @"
+                            ? "(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+                            : "@AuditId") + @"
             ),
             TEMPMAX AS (
                 SELECT 
@@ -656,76 +703,76 @@ public async Task<TemperatureResult> CalTemperatureTNAsync(
             SELECT MAX(TEMPMAX.temperature) FROM TEMPMAX;
         ";
 
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = baseSql;
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = baseSql;
 
-        if (string.IsNullOrEmpty(auditId))
-            cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
-        else
-            cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+                if (string.IsNullOrEmpty(auditId))
+                    cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+                else
+                    cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
 
-        cmd.Parameters.Add(new SqlParameter("@StartNo", gStartNoMain[i]));
-        cmd.Parameters.Add(new SqlParameter("@EndNo", gEndNoMain.Length > i ? gEndNoMain[i] : 9999));
+                cmd.Parameters.Add(new SqlParameter("@StartNo", gStartNoMain[i]));
+                cmd.Parameters.Add(new SqlParameter("@EndNo", gEndNoMain.Length > i ? gEndNoMain[i] : 9999));
 
-        var scalarResult = await cmd.ExecuteScalarAsync();
-        result.TemperatureIn[i] = scalarResult != null && scalarResult != DBNull.Value
-            ? Convert.ToDouble(scalarResult)
-            : 0.0;
-    }
+                var scalarResult = await cmd.ExecuteScalarAsync();
+                result.TemperatureIn[i] = scalarResult != null && scalarResult != DBNull.Value
+                    ? Convert.ToDouble(scalarResult)
+                    : 0.0;
+            }
 
-    return result;
-}
-public async Task<double> CalEnergyAsync(string? serial, string? auditId)
-{
-    using var conn = await GetOpenConnectionAsync();
+            return result;
+        }
+        public async Task<double> CalEnergyAsync(string? serial, string? auditId)
+        {
+            using var conn = await GetOpenConnectionAsync();
 
-    // SQL with parameter placeholders only
-    string sql = @"
+            // SQL with parameter placeholders only
+            string sql = @"
 SELECT MAX(CAST(PowerUsage AS FLOAT)) AS Energy
 FROM cfa_data_excel
 WHERE auditid = @AuditId";
 
-    await using var cmd = conn.CreateCommand();
-    cmd.CommandText = sql;
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
 
-    // Determine the AuditId parameter safely
-    if (!string.IsNullOrWhiteSpace(auditId))
-    {
-        cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
-    }
-    else
-    {
-        // Use a subquery to get the latest AuditID by Serial
-        cmd.CommandText = @"
+            // Determine the AuditId parameter safely
+            if (!string.IsNullOrWhiteSpace(auditId))
+            {
+                cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+            }
+            else
+            {
+                // Use a subquery to get the latest AuditID by Serial
+                cmd.CommandText = @"
 SELECT MAX(CAST(PowerUsage AS FLOAT)) AS Energy
 FROM cfa_data_excel
 WHERE auditid = (SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)";
-        cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
-    }
+                cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+            }
 
-    var result = await cmd.ExecuteScalarAsync();
+            var result = await cmd.ExecuteScalarAsync();
 
-    return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
-}
+            return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
+        }
 
 
-public async Task<FinalRinseA> CalFinalRinseANAsync(
-    string? serial,
-    string? auditId,
-    int[] gStartNoMain,
-    int mainFillTimes)
-{
-    var result = new FinalRinseA(mainFillTimes);
+        public async Task<FinalRinseA> CalFinalRinseANAsync(
+            string? serial,
+            string? auditId,
+            int[] gStartNoMain,
+            int mainFillTimes)
+        {
+            var result = new FinalRinseA(mainFillTimes);
 
-    using var conn = await GetOpenConnectionAsync();
+            using var conn = await GetOpenConnectionAsync();
 
-    for (int i = 0; i < mainFillTimes; i++)
-    {
-        // Determine sample range dynamically
-        int startNo = gStartNoMain[i];
-        int endNo = (i + 1 < gStartNoMain.Length) ? gStartNoMain[i + 1] : 9999;
+            for (int i = 0; i < mainFillTimes; i++)
+            {
+                // Determine sample range dynamically
+                int startNo = gStartNoMain[i];
+                int endNo = (i + 1 < gStartNoMain.Length) ? gStartNoMain[i + 1] : 9999;
 
-        string sql = $@"
+                string sql = $@"
 WITH basedata AS (
     SELECT ROW_NUMBER() OVER(ORDER BY seconds ASC) AS SampleRun,
            seconds, voltage, [current], [power],
@@ -733,8 +780,8 @@ WITH basedata AS (
            waterpressure, watertemperature
     FROM cfa_data_excel
     WHERE auditid = {(string.IsNullOrEmpty(auditId)
-            ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
-            : "@AuditId")}
+                    ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+                    : "@AuditId")}
 ),
 AMPMAX AS (
     SELECT 
@@ -751,55 +798,55 @@ AMPMAX AS (
 )
 SELECT MAX([current]) FROM AMPMAX;";
 
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
 
-        if (string.IsNullOrEmpty(auditId))
-            cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
-        else
-            cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+                if (string.IsNullOrEmpty(auditId))
+                    cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+                else
+                    cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
 
-        cmd.Parameters.Add(new SqlParameter("@StartNo", startNo));
-        cmd.Parameters.Add(new SqlParameter("@EndNo", endNo));
+                cmd.Parameters.Add(new SqlParameter("@StartNo", startNo));
+                cmd.Parameters.Add(new SqlParameter("@EndNo", endNo));
 
-        var scalarResult = await cmd.ExecuteScalarAsync();
-        result[i] = scalarResult != null && scalarResult != DBNull.Value
-            ? Convert.ToDouble(scalarResult)
-            : 0.0;
-    }
+                var scalarResult = await cmd.ExecuteScalarAsync();
+                result[i] = scalarResult != null && scalarResult != DBNull.Value
+                    ? Convert.ToDouble(scalarResult)
+                    : 0.0;
+            }
 
-    return result;
-}
-public async Task<double> CalVoltAsync(string? serial, string? auditId)
-{
-    using var conn = await GetOpenConnectionAsync();
+            return result;
+        }
+        public async Task<double> CalVoltAsync(string? serial, string? auditId)
+        {
+            using var conn = await GetOpenConnectionAsync();
 
-    string sql = $@"
+            string sql = $@"
 SELECT AVG(CAST(Voltage AS FLOAT))
 FROM cfa_data_excel
 WHERE auditid = {(string.IsNullOrEmpty(auditId)
-        ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
-        : "@AuditId")}";
+                ? $"(SELECT TOP 1 AuditID FROM Audit WHERE Serial = @Serial ORDER BY AuditID DESC)"
+                : "@AuditId")}";
 
-    await using var cmd = conn.CreateCommand();
-    cmd.CommandText = sql;
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
 
-    if (string.IsNullOrEmpty(auditId))
-        cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
-    else
-        cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
+            if (string.IsNullOrEmpty(auditId))
+                cmd.Parameters.Add(new SqlParameter("@Serial", serial ?? (object)DBNull.Value));
+            else
+                cmd.Parameters.Add(new SqlParameter("@AuditId", auditId));
 
-    var result = await cmd.ExecuteScalarAsync();
-    return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
-}
+            var result = await cmd.ExecuteScalarAsync();
+            return (result != null && result != DBNull.Value) ? Convert.ToDouble(result) : 0.0;
+        }
 
 
 
-public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo, string typeTub)
-    {
-        var limits = new List<PartLimit>();
+        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo, string typeTub)
+        {
+            var limits = new List<PartLimit>();
 
-        using var conn = await GetOpenConnectionAsync();
+            using var conn = await GetOpenConnectionAsync();
 
             var sql = new StringBuilder(@"
 WITH LatestRun AS (
@@ -870,20 +917,20 @@ ORDER BY ps.task_reference;
             // Use SqlCommand (NOW AddWithValue works)
             using var cmd = new SqlCommand(sql.ToString(), (SqlConnection)conn);
 
-        // Always add mandatory parameters
-        cmd.Parameters.AddWithValue("@ParentPart", parentPart);
-        cmd.Parameters.AddWithValue("@Serial", serialNo);
+            // Always add mandatory parameters
+            cmd.Parameters.AddWithValue("@ParentPart", parentPart);
+            cmd.Parameters.AddWithValue("@Serial", serialNo);
 
-        // Optional parameter — only add when needed
-        if (typeTub == "Top" || typeTub == "Bot")
-        {
-            cmd.Parameters.AddWithValue("@TypeTub", typeTub);
-        }
+            // Optional parameter — only add when needed
+            if (typeTub == "Top" || typeTub == "Bot")
+            {
+                cmd.Parameters.AddWithValue("@TypeTub", typeTub);
+            }
 
-        using var reader = await cmd.ExecuteReaderAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
 
-        while (await reader.ReadAsync())
-        {
+            while (await reader.ReadAsync())
+            {
                 limits.Add(new PartLimit
                 {
                     Part = reader.IsDBNull(0) ? null : reader.GetString(0),
@@ -897,7 +944,7 @@ ORDER BY ps.task_reference;
             }
 
             return limits;
-    }
+        }
 
         public async Task<List<VisualCheckItem>> GetVisualChecksAsync(string parentPart, string task = "4625")
         {
@@ -1185,7 +1232,7 @@ ORDER BY p.class,ps2.task_reference;
                                            double? thresholdBC,
                                            ref int mainFillCount,
                                            ref int flushHistoryCount,
-                                           string resultB6)
+                                           string DescCA)
         {
             // Build allValuesCut for flush check (last 5 values)
             var allValuesCut = new List<double>();
@@ -1208,7 +1255,7 @@ ORDER BY p.class,ps2.task_reference;
                 }
             }
 
-            if (IsFlush(allValuesCut, xValueCutLast, flushHistoryCount, resultB6))
+            if (IsFlush(allValuesCut, xValueCutLast, flushHistoryCount, DescCA))
             {
                 flushHistoryCount++;
                 return "Flush";
@@ -1238,8 +1285,38 @@ ORDER BY p.class,ps2.task_reference;
             return fillType;
         }
 
+        /// <summary>
+        /// Get Description for a specific part number from database (async)
+        /// </summary>
+        public async Task<string?> GetDescriptionByPartAsync(string partNumber)
+        {
+            if (string.IsNullOrWhiteSpace(partNumber))
+                throw new ArgumentException("Part number cannot be null or empty.", nameof(partNumber));
+
+            string? description = null;
+            string sql = "SELECT description FROM part WHERE part = @part";
+
+            // Use async disposal to safely close the connection
+            await using var conn = await GetOpenConnectionAsync();
+            await using var cmd = new SqlCommand(sql, (SqlConnection)conn);
+
+            cmd.Parameters.Add("@part", SqlDbType.VarChar).Value = partNumber;
+
+            // Execute query asynchronously
+            object? result = await cmd.ExecuteScalarAsync();
+            if (result != null && result != DBNull.Value)
+            {
+                description = result.ToString();
+
+                // Remove "DISHDRAWER" if exists (case-insensitive)
+                description = description?.Replace("DISHDRAWER", "", StringComparison.OrdinalIgnoreCase).Trim();
+            }
+
+            return description;
+        }
+
+
+
+
     }
-
-    
-
 }
