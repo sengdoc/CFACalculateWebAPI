@@ -28,7 +28,9 @@ function classMapping(className, data) {
         "TS_CFA_VOLT": data.vVoltage ?? 0,
         "TS_CFA_MWA": data.vMainWashAmperage ?? 0,
         "TS_CFA_FRA": data.vFinalRinseAmperage ?? 0,
-        "TS_CFA_CYCLET": data.vCycleTime ?? 0
+        "TS_CFA_CYCLET": data.vCycleTime ?? 0,
+        "TS_CFA_ADF": data.vAdditionalFills ?? 0
+        
     };
     return map[className] ?? 0;
 }

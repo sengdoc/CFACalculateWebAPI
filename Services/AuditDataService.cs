@@ -6,7 +6,9 @@ using Newtonsoft.Json;
 using System;
 using System.Data.Common; // ✅ add this
 using System.Data.SqlClient;
+using System.Security.Cryptography;
 using System.Text;
+
 namespace CFACalculateWebAPI.Services
 {
     public class AuditDataService
@@ -17,6 +19,7 @@ namespace CFACalculateWebAPI.Services
             public List<double> FinalFills { get; set; } = new List<double>();
             public List<int> MainFillIndicators { get; set; } = new List<int>();
             public List<int> FillIndicators { get; set; } = new List<int>();
+            public int AdditionalFills { get; set; }
         }
 
         private readonly AppDbContext _context;
@@ -156,7 +159,7 @@ INNER JOIN datfillend de ON ds.RunNo = de.RunNo;";
             return resultList.ToArray();
         }
         // Calculate Timed Final Fills
-        public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? serial, string? auditId, List<int> endSampleNos)
+        public async Task<TimedFinalFillResult> CalTimedFinalFillsNAsync(string? partCA,string? serial, string? auditId, List<int> endSampleNos)
         {
             var timedFills = new List<double>();
 
@@ -225,17 +228,17 @@ ORDER BY FILLS;";
             }
 
             // ===== Calculate Timed Final FillResult =====
-            var finalFillResult = CalculateTimedFinalFills(timedFills);
+            var finalFillResult = CalculateTimedFinalFills(partCA, timedFills);
 
             return finalFillResult;
         }
 
         // Calculate Final Fills
-        private TimedFinalFillResult CalculateTimedFinalFills(List<double> timedFills)
+        private TimedFinalFillResult CalculateTimedFinalFills(string? partCA,List<double> timedFills)
         {
             //List<double> timedFills = new List<double> { 2.34, 2.02, 2.03 };
             int n = timedFills.Count;
-
+            int NoOfFills = n;
             // Initialize result lists
             var RetTimedFills = new List<double>(new double[n]);
             var RetFinalFills = new List<double>(new double[n]);
@@ -245,19 +248,38 @@ ORDER BY FILLS;";
 
             var gRunNoAll = new List<int>(new int[n]);
 
+            
+
+
             // Threshold values for classification
-            //double R1 = 2.20;
-            //double R2 = 2.00;
-            //double R3 = 2.00;
-            //double R4 = 0.00;
-            //double R5 = 0.00;
+         //   var rst =  FillInitialTargetsData.Data.TryGetValue(partCA, out var DataResult);
+       
+            if (string.IsNullOrWhiteSpace(partCA))
+            {
+                throw new ArgumentException("Part CA cannot be null or empty.");
+            }
 
-            double? thresholdAI = 2.20;
-            double? thresholdAN = 2.00;
-            double? thresholdAS = 2.00;
-            double? thresholdAX = 0.00;
-            double? thresholdBC = 0.00;
+            var rst = FillInitialTargetsData.Data.TryGetValue(partCA, out var DataResult);
 
+           
+            
+            if (rst == false)
+            {
+                throw new ArgumentException("Part CA not found in FillInitialTargetsData.");
+            }
+            double? thresholdAI = 0; 
+            double? thresholdAN = 0;
+            double? thresholdAS = 0;
+            double? thresholdAX = 0;
+            double? thresholdBC = 0;
+            if (DataResult != null)
+            {
+                thresholdAI = DataResult.Fill1;
+                thresholdAN = DataResult.Fill2;
+                thresholdAS = DataResult.Fill3;
+                thresholdAX = DataResult.Fill4;
+                thresholdBC = DataResult.Fill5;
+            }
             int mainFillCount = 0;
             int flushHistoryCount = 0;
 
@@ -331,91 +353,24 @@ ORDER BY FILLS;";
             }
             RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
 
-
-            // Variables to track "Main Fill" and "Topup"
-            //int mainFillCount = 0;
-
-            // Iterate through each value in the timedFills list
-            //for (int i = 0; i < n; i++)
-            //{
-            //    double threshold = 0;
-
-            //    // Determine the threshold based on the round
-            //    if (mainFillCount == 0)
-            //        threshold = R1;
-            //    else if (mainFillCount == 1)
-            //        threshold = R2;
-            //    else if (mainFillCount == 2)
-            //        threshold = R3;
-            //    else if (mainFillCount == 3)
-            //        threshold = R4;
-            //    else if (mainFillCount == 4)
-            //        threshold = R5;
-
-            //    string classification = "Topup";  // Default classification
-
-            //    // Check if the current fill value is within ±0.2 range of the threshold for "Main Fill"
-            //    if (threshold != 0 && timedFills[i] >= (threshold - 0.2) && timedFills[i] <= (threshold + 0.2))
-            //    {
-            //        classification = "Main Fill";
-            //        gRunNoMainF[i] = 1;  // Mark as "Main Fill"
-            //        mainFillCount++;      // Increment mainFill count
-            //    }
-            //    else
-            //    {
-            //        classification = "Topup";
-            //        gRunNoTopupF[i] = 1;  // Mark as "Topup"
-            //    }
-
-            //}
-            //for(int x=0;x<n;x++)
-            //{
-
-            //    if (gRunNoMainF[x] == 1)
-            //    {
-            //        RetTimedFills[x] = timedFills[x];
-            //    }
-
-            //}
-
-
-
-
-
-            //RetTimedFills = RetTimedFills.Where(x => x != 0).ToList();
-
-
-            //int j = 0;
-            //bool isFinalFill = false;
-            //for (int y = 0; y < n; y++)
-            //{
-            //    if (gRunNoTopupF[y] == 0)
-            //    {
-            //        isFinalFill = false;
-            //        RetFinalFills[j] = timedFills[y];
-            //        j++;
-            //    }
-            //    else if (gRunNoTopupF[y] == 1 && isFinalFill == false)
-            //    {
-            //        RetFinalFills[j - 1] += timedFills[y];
-            //        isFinalFill = true;
-
-            //    }
-            //    else if (gRunNoTopupF[y] == 1 && isFinalFill == true)
-            //    {
-            //        RetFinalFills[j - 1] += timedFills[y];
-            //        isFinalFill = true;
-
-            //    }
-            //}
-            //RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
+            
+           
+            bool HaveFlush = gRunNoAll.Any(x => x == 3);
+            var rst2 = NoOfFillsData.Data.TryGetValue(partCA, out var NoOfFillBOM);
+            //Logic check Additional Fills
+            int AdditionalFills = 0;
+            AdditionalFills = NoOfFills - ((int)NoOfFillBOM);
+            if (HaveFlush)
+            { AdditionalFills = AdditionalFills - 4; }    
+                
             // Return the result as an object of TimedFinalFillResult
             return new TimedFinalFillResult
             {
                 TimedFills = RetTimedFills,
                 FinalFills = RetFinalFills,
                 MainFillIndicators = gRunNoMainF,
-                FillIndicators = gRunNoAll
+                FillIndicators = gRunNoAll,
+                AdditionalFills = AdditionalFills
             };
         }
 
@@ -906,7 +861,7 @@ WHERE ps2.part = @ParentPart
       'TS_CFA_FT2', 'TS_CFA_FT3', 'TS_CFA_FT4', 'TS_CFA_FT5',
       'TS_CFA_FF1', 'TS_CFA_FF2', 'TS_CFA_FF3', 'TS_CFA_FF4',
       'TS_CFA_FF5', 'TS_CFA_MWT', 'TS_CFA_FNT', 'TS_CFA_ENER',
-      'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA','TS_CFA_CYCLET'
+      'TS_CFA_HEATUP', 'TS_CFA_VOLT', 'TS_CFA_MWA','TS_CFA_CYCLET','TS_CFA_ADF'
   )
 ORDER BY ps.task_reference;
 ");
@@ -969,7 +924,7 @@ AND p.class NOT IN (
     'TS_CFA_FT1','TS_CFA_FT2','TS_CFA_FT3','TS_CFA_FT4','TS_CFA_FT5',
     'TS_CFA_FF1','TS_CFA_FF2','TS_CFA_FF3','TS_CFA_FF4','TS_CFA_FF5',
     'TS_CFA_MWT','TS_CFA_FNT','TS_CFA_ENER','TS_CFA_HEATUP','TS_CFA_VOLT',
-    'TS_CFA_MWA','TS_CFA_CYCLET'
+    'TS_CFA_MWA','TS_CFA_CYCLET','TS_CFA_ADF'
 )
 ORDER BY p.class,ps2.task_reference;
     ";
@@ -1284,4 +1239,7 @@ ORDER BY p.class,ps2.task_reference;
         }
 
     }
+
+    
+
 }

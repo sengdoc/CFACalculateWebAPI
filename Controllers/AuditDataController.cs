@@ -46,13 +46,13 @@ namespace CFACalculateWebAPI.Controllers
                 }
 
                 // 2. Sample Runs
-                var sampleRuns = await _service.InitSampleRunNoAsync(DataProduct[0], auditId);
+                var sampleRuns = await _service.InitSampleRunNoAsync(DataProduct[2], auditId);
                 if (!sampleRuns.Any())
                     return BadRequest(new { message = "No sample runs found." });
 
-                // 3. Fill Calculations
+                // 3. Fill Calculations & Check Number of Additional Fills
                 var endSampleNos = sampleRuns.Select(sr => sr.EndSampleRun).ToList();
-                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[0], auditId, endSampleNos);
+                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[1],DataProduct[2], auditId, endSampleNos);
                 double totalFillVolume = fillResult.FinalFills?.Sum() ?? 0;
 
                 // 4. Main Fill Info
@@ -76,24 +76,24 @@ namespace CFACalculateWebAPI.Controllers
                 }
 
                 // 5. Calculations
-                double fvfrValue = await _service.CalFVFRNAsync(DataProduct[0], auditId, mainFillTimes, fillRanges);
-                double incomingWaterTemp = await _service.CalInComWTempAsync(DataProduct[0], auditId, mainFillTimes, fillRanges);
-                double heatUpRate = await _service.CalHeatUpRateAsync(DataProduct[0], auditId);
-                double cycleTime = await _service.CalCycleTimeAsync(DataProduct[0], auditId);
+                double fvfrValue = await _service.CalFVFRNAsync(DataProduct[2], auditId, mainFillTimes, fillRanges);
+                double incomingWaterTemp = await _service.CalInComWTempAsync(DataProduct[2], auditId, mainFillTimes, fillRanges);
+                double heatUpRate = await _service.CalHeatUpRateAsync(DataProduct[2], auditId);
+                double cycleTime = await _service.CalCycleTimeAsync(DataProduct[2], auditId);
 
-                var tempResult = await _service.CalTemperatureTNAsync(DataProduct[0], auditId, mainFillStart.ToArray(), mainFillEnd.ToArray(), mainFillTimes);
+                var tempResult = await _service.CalTemperatureTNAsync(DataProduct[2], auditId, mainFillStart.ToArray(), mainFillEnd.ToArray(), mainFillTimes);
                 double mainWashTemp = tempResult.TemperatureIn[0];
                 double finalRinseTemp = tempResult.TemperatureIn[mainFillTimes] == 0
                     ? tempResult.TemperatureIn[mainFillTimes - 1]
                     : tempResult.TemperatureIn[mainFillTimes];
 
-                double energy = await _service.CalEnergyAsync(DataProduct[0], auditId);
+                double energy = await _service.CalEnergyAsync(DataProduct[2], auditId);
 
-                var finalRinseResult = await _service.CalFinalRinseANAsync(DataProduct[0], auditId, mainFillStart.ToArray(), mainFillTimes);
+                var finalRinseResult = await _service.CalFinalRinseANAsync(DataProduct[2], auditId, mainFillStart.ToArray(), mainFillTimes);
                 double mainWashAmperage = finalRinseResult.Values[0];
                 double finalRinseAmperage = finalRinseResult.Values[mainFillTimes - 1];
 
-                var voltage = await _service.CalVoltAsync(DataProduct[0], auditId);
+                var voltage = await _service.CalVoltAsync(DataProduct[2], auditId);
 
                 // 6. Get Part Limits
                 var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "");
@@ -121,7 +121,8 @@ namespace CFACalculateWebAPI.Controllers
                     vFinalRinseAmperage = finalRinseAmperage,
                     vVoltage = voltage,
                     vPartLimits = partLimits,
-                    vVisualChecks = visualChecks
+                    vVisualChecks = visualChecks,
+                    vAdditionalFills = fillResult.AdditionalFills,
                 });
             }
             catch (Exception ex)
