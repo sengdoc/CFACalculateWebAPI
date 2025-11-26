@@ -108,7 +108,7 @@ namespace CFACalculateWebAPI.Controllers
                     vSampleRuns = sampleRuns,
                     vTimedFills = fillResult.TimedFills,
                     vFinalFills = fillResult.FinalFills,
-                    vMainFillIndicators = fillResult.MainFillIndicators,
+                    vFillIndicators = fillResult.FillIndicators,
                     vFillVolume = totalFillVolume,
                     vFVFR = fvfrValue,
                     vIncomingWaterTemperature = incomingWaterTemp,

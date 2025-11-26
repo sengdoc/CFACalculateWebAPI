@@ -16,6 +16,7 @@ namespace CFACalculateWebAPI.Services
             public List<double> TimedFills { get; set; } = new List<double>();
             public List<double> FinalFills { get; set; } = new List<double>();
             public List<int> MainFillIndicators { get; set; } = new List<int>();
+            public List<int> FillIndicators { get; set; } = new List<int>();
         }
 
         private readonly AppDbContext _context;
@@ -223,14 +224,14 @@ ORDER BY FILLS;";
                 i++;
             }
 
-            // ===== Calculate Final Fills based on Delphi logic =====
-            var finalFillResult = CalculateFinalFills(timedFills);
+            // ===== Calculate Timed Final FillResult =====
+            var finalFillResult = CalculateTimedFinalFills(timedFills);
 
             return finalFillResult;
         }
 
         // Calculate Final Fills
-        private TimedFinalFillResult CalculateFinalFills(List<double> timedFills)
+        private TimedFinalFillResult CalculateTimedFinalFills(List<double> timedFills)
         {
             //List<double> timedFills = new List<double> { 2.34, 2.02, 2.03 };
             int n = timedFills.Count;
@@ -240,84 +241,88 @@ ORDER BY FILLS;";
             var RetFinalFills = new List<double>(new double[n]);
             var gRunNoMainF = new List<int>(new int[n]);
             var gRunNoTopupF = new List<int>(new int[n]);
+            var gRunNoFlushF = new List<int>(new int[n]);
+
+            var gRunNoAll = new List<int>(new int[n]);
 
             // Threshold values for classification
-            double R1 = 2.20;
-            double R2 = 2.00;
-            double R3 = 2.00;
-            double R4 = 0.00;
-            double R5 = 0.00;
+            //double R1 = 2.20;
+            //double R2 = 2.00;
+            //double R3 = 2.00;
+            //double R4 = 0.00;
+            //double R5 = 0.00;
 
-            // Variables to track "Main Fill" and "Topup"
+            double? thresholdAI = 2.20;
+            double? thresholdAN = 2.00;
+            double? thresholdAS = 2.00;
+            double? thresholdAX = 0.00;
+            double? thresholdBC = 0.00;
+
             int mainFillCount = 0;
+            int flushHistoryCount = 0;
 
-            // Iterate through each value in the timedFills list
-            for (int i = 0; i < n; i++)
+            for (int index = 0; index < timedFills.Count; index++)
             {
-                double threshold = 0;
+                double value = timedFills[index];
+                string classification = CheckFillType(
+                    fillValue: value,
+                    findex: index,
+                    allValues: timedFills,
+                    thresholdAI, thresholdAN, thresholdAS, thresholdAX, thresholdBC,
+                    ref mainFillCount,
+                    ref flushHistoryCount,
+                    resultB6: "DD60D2NX9H FP AA" // Example value containing H
+                );
 
-                // Determine the threshold based on the round
-                if (mainFillCount == 0)
-                    threshold = R1;
-                else if (mainFillCount == 1)
-                    threshold = R2;
-                else if (mainFillCount == 2)
-                    threshold = R3;
-                else if (mainFillCount == 3)
-                    threshold = R4;
-                else if (mainFillCount == 4)
-                    threshold = R5;
-
-                string classification = "Topup";  // Default classification
-
-                // Check if the current fill value is within ±0.2 range of the threshold for "Main Fill"
-                if (threshold != 0 && timedFills[i] >= (threshold - 0.2) && timedFills[i] <= (threshold + 0.2))
+                Console.WriteLine($"Check {value} → {classification}");
+                if (classification == "Main Fill")
                 {
-                    classification = "Main Fill";
-                    gRunNoMainF[i] = 1;  // Mark as "Main Fill"
-                    mainFillCount++;      // Increment mainFill count
+
+                    gRunNoMainF[index] = 1;  // Mark as "Main Fill"
+                    gRunNoAll[index] = 1;
+
                 }
-                else
+                else if (classification == "Topup")
                 {
-                    classification = "Topup";
-                    gRunNoTopupF[i] = 1;  // Mark as "Topup"
+                    gRunNoTopupF[index] = 2;  // Mark as "Topup"    
+                    gRunNoAll[index] = 2;
                 }
-              
+                else if (classification == "Flush")
+                {
+                    gRunNoFlushF[index] = 3;  // Mark as "Flush"
+                    gRunNoAll[index] = 3;
+
+                }
             }
-            for(int x=0;x<n;x++)
+
+            for (int x = 0; x < n; x++)
             {
-                
-                if (gRunNoMainF[x] == 1)
+
+                if (gRunNoAll[x] == 1)
                 {
                     RetTimedFills[x] = timedFills[x];
                 }
-               
+
             }
-            
-
-
-
-
             RetTimedFills = RetTimedFills.Where(x => x != 0).ToList();
-
-
+            //=============
             int j = 0;
             bool isFinalFill = false;
             for (int y = 0; y < n; y++)
             {
-                if (gRunNoTopupF[y] == 0)
+                if (gRunNoAll[y] == 1) // Is Main Fill
                 {
                     isFinalFill = false;
                     RetFinalFills[j] = timedFills[y];
                     j++;
                 }
-                else if (gRunNoTopupF[y] == 1 && isFinalFill == false)
+                else if (gRunNoTopupF[y] == 2 && isFinalFill == false)  // Is Firt Top up fill.
                 {
                     RetFinalFills[j - 1] += timedFills[y];
                     isFinalFill = true;
 
                 }
-                else if (gRunNoTopupF[y] == 1 && isFinalFill == true)
+                else if (gRunNoTopupF[y] == 2 && isFinalFill == true)  // Is Top up fill again.
                 {
                     RetFinalFills[j - 1] += timedFills[y];
                     isFinalFill = true;
@@ -325,12 +330,92 @@ ORDER BY FILLS;";
                 }
             }
             RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
+
+
+            // Variables to track "Main Fill" and "Topup"
+            //int mainFillCount = 0;
+
+            // Iterate through each value in the timedFills list
+            //for (int i = 0; i < n; i++)
+            //{
+            //    double threshold = 0;
+
+            //    // Determine the threshold based on the round
+            //    if (mainFillCount == 0)
+            //        threshold = R1;
+            //    else if (mainFillCount == 1)
+            //        threshold = R2;
+            //    else if (mainFillCount == 2)
+            //        threshold = R3;
+            //    else if (mainFillCount == 3)
+            //        threshold = R4;
+            //    else if (mainFillCount == 4)
+            //        threshold = R5;
+
+            //    string classification = "Topup";  // Default classification
+
+            //    // Check if the current fill value is within ±0.2 range of the threshold for "Main Fill"
+            //    if (threshold != 0 && timedFills[i] >= (threshold - 0.2) && timedFills[i] <= (threshold + 0.2))
+            //    {
+            //        classification = "Main Fill";
+            //        gRunNoMainF[i] = 1;  // Mark as "Main Fill"
+            //        mainFillCount++;      // Increment mainFill count
+            //    }
+            //    else
+            //    {
+            //        classification = "Topup";
+            //        gRunNoTopupF[i] = 1;  // Mark as "Topup"
+            //    }
+
+            //}
+            //for(int x=0;x<n;x++)
+            //{
+
+            //    if (gRunNoMainF[x] == 1)
+            //    {
+            //        RetTimedFills[x] = timedFills[x];
+            //    }
+
+            //}
+
+
+
+
+
+            //RetTimedFills = RetTimedFills.Where(x => x != 0).ToList();
+
+
+            //int j = 0;
+            //bool isFinalFill = false;
+            //for (int y = 0; y < n; y++)
+            //{
+            //    if (gRunNoTopupF[y] == 0)
+            //    {
+            //        isFinalFill = false;
+            //        RetFinalFills[j] = timedFills[y];
+            //        j++;
+            //    }
+            //    else if (gRunNoTopupF[y] == 1 && isFinalFill == false)
+            //    {
+            //        RetFinalFills[j - 1] += timedFills[y];
+            //        isFinalFill = true;
+
+            //    }
+            //    else if (gRunNoTopupF[y] == 1 && isFinalFill == true)
+            //    {
+            //        RetFinalFills[j - 1] += timedFills[y];
+            //        isFinalFill = true;
+
+            //    }
+            //}
+            //RetFinalFills = RetFinalFills.Where(x => x != 0).ToList();
             // Return the result as an object of TimedFinalFillResult
             return new TimedFinalFillResult
             {
                 TimedFills = RetTimedFills,
                 FinalFills = RetFinalFills,
-                MainFillIndicators = gRunNoMainF
+                MainFillIndicators = gRunNoMainF,
+                FillIndicators = gRunNoAll
             };
         }
 
@@ -761,48 +846,53 @@ public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string 
 
         using var conn = await GetOpenConnectionAsync();
 
-        var sql = new StringBuilder(@"
-SELECT DISTINCT
+            var sql = new StringBuilder(@"
+WITH LatestRun AS (
+    SELECT tsl.*
+    FROM test_result_lis tsl
+    INNER JOIN (
+        SELECT test_part, serial, test_info1, test_unit_id,
+               MAX(run_number) AS max_run
+        FROM test_result_lis
+        WHERE test_part = '595130'
+          AND serial = @Serial
+        GROUP BY test_part, serial, test_info1, test_unit_id
+    ) lm ON tsl.test_part = lm.test_part
+         AND tsl.serial = lm.serial
+         AND tsl.test_info1 = lm.test_info1
+         AND tsl.test_unit_id = lm.test_unit_id
+         AND tsl.run_number = lm.max_run
+)
+SELECT
     p.part,
     p.class,
     p.description,
     ps.task_reference,
-    IIF(
-        p.class = 'TS_CFA_FVFR',
-        tsl.test_value - 2,
-        IIF(
-            p.class NOT IN ('TS_CFA_ENER'),
-            CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000,
-            pt.lower_limit_value
-        )
-    ) AS lower_limit_k,
-    IIF(
-        p.class = 'TS_CFA_FVFR',
-        tsl.test_value + 2,
-        IIF(
-            p.class NOT IN ('TS_CFA_ENER'),
-            CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000,
-            pt.upper_limit_value
-        )
-    ) AS upper_limit_k
+    CASE 
+        WHEN p.class = 'TS_CFA_FVFR' THEN tsl.test_value - 2
+        WHEN p.class NOT IN ('TS_CFA_ENER') THEN CAST(pt.lower_limit_value AS DECIMAL(18,2)) / 1000
+        ELSE pt.lower_limit_value
+    END AS lower_limit_k,
+    CASE 
+        WHEN p.class = 'TS_CFA_FVFR' THEN tsl.test_value + 2
+        WHEN p.class NOT IN ('TS_CFA_ENER') THEN CAST(pt.upper_limit_value AS DECIMAL(18,2)) / 1000
+        ELSE pt.upper_limit_value
+    END AS upper_limit_k
 FROM part_structure ps
 INNER JOIN part p ON ps.component = p.part
 INNER JOIN part_issue pii ON pii.part = p.part
 INNER JOIN part_structure ps2 ON ps2.component = ps.part
 INNER JOIN part_test pt ON ps.component = pt.part AND pt.part_issue = pii.part_issue
-INNER JOIN test_result_lis tsl ON tsl.test_part = '595130'
+INNER JOIN LatestRun tsl ON tsl.test_part = '595130'
 WHERE ps2.part = @ParentPart
-  AND tsl.serial = @Serial
 ");
 
-        // Optional filter
-        if (typeTub == "Top" || typeTub == "Bot")
-        {
-            sql.AppendLine("  AND tsl.test_info1 = @TypeTub");
-        } 
-        //else = SINGLE
+            if (typeTub == "Top" || typeTub == "Bot")
+            {
+                sql.AppendLine("  AND tsl.test_info1 = @TypeTub");
+            }
 
-        sql.AppendLine(@"
+            sql.AppendLine(@"
   AND tsl.test_unit_id = 'Celsius'
   AND ps2.task = 4625
   AND ps.eff_start <= GETDATE()
@@ -821,8 +911,9 @@ WHERE ps2.part = @ParentPart
 ORDER BY ps.task_reference;
 ");
 
-        // Use SqlCommand (NOW AddWithValue works)
-        using var cmd = new SqlCommand(sql.ToString(), (SqlConnection)conn);
+
+            // Use SqlCommand (NOW AddWithValue works)
+            using var cmd = new SqlCommand(sql.ToString(), (SqlConnection)conn);
 
         // Always add mandatory parameters
         cmd.Parameters.AddWithValue("@ParentPart", parentPart);
@@ -1109,7 +1200,88 @@ ORDER BY p.class,ps2.task_reference;
         }
 
 
+        // ---------------------------- FLUSH LOGIC ----------------------------
+        public static bool IsFlush(List<double> allValues, double xValueCutLast, int flushHistoryCount, string resultB6)
+        {
+            bool containsH = !string.IsNullOrEmpty(resultB6) && resultB6.Contains("H");
 
+            double sum = 0;
+            for (int i = 0; i < allValues.Count - 1; i++)
+                sum += allValues[i];
+
+            bool conditionA = containsH &&
+                              sum > 1.2 && sum < 2.0 &&
+                              xValueCutLast > 0.5 &&
+                              allValues.Count - 1 == 4;
+
+            bool conditionB = flushHistoryCount >= 1 && flushHistoryCount < 4;
+
+            return conditionA || conditionB;
+        }
+
+        // ------------------ Check Fill Type ------------------
+        public static string CheckFillType(double fillValue,
+                                           int findex,
+                                           List<double> allValues,
+                                           double? thresholdAI,
+                                           double? thresholdAN,
+                                           double? thresholdAS,
+                                           double? thresholdAX,
+                                           double? thresholdBC,
+                                           ref int mainFillCount,
+                                           ref int flushHistoryCount,
+                                           string resultB6)
+        {
+            // Build allValuesCut for flush check (last 5 values)
+            var allValuesCut = new List<double>();
+            bool startAdding = false;
+            int count = 0;
+            double xValueCutLast = 0;
+
+            for (int i = 0; i < allValues.Count; i++)
+            {
+                if (i == findex) startAdding = true;
+                if (startAdding)
+                {
+                    allValuesCut.Add(allValues[i]);
+                    count++;
+                }
+                if (count == 5)
+                {
+                    xValueCutLast = allValues[i];
+                    break;
+                }
+            }
+
+            if (IsFlush(allValuesCut, xValueCutLast, flushHistoryCount, resultB6))
+            {
+                flushHistoryCount++;
+                return "Flush";
+            }
+
+            // Determine Main Fill / Topup
+            string fillType = "Topup";
+
+            double? threshold = mainFillCount switch
+            {
+                0 => thresholdAI,
+                1 => thresholdAN,
+                2 => thresholdAS,
+                3 => thresholdAX,
+                4 => thresholdBC,
+                _ => null
+            };
+
+            if (threshold.HasValue && threshold.Value != 0 &&
+                fillValue >= threshold.Value - 0.2 &&
+                fillValue <= threshold.Value + 0.2)
+            {
+                mainFillCount++;
+                fillType = "Main Fill";
+            }
+
+            return fillType;
+        }
 
     }
 }
