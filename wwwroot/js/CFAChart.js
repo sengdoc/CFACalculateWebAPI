@@ -2,6 +2,12 @@
 let lastData = null;
 let highlightedIndex = null;
 
+// prettier colors -----------------
+const colorFail = "#ffb3b3";      // pastel red
+const colorPass = "#b9f2c3";      // pastel green
+const colorSpecial = "#fafafa";   // pastel white
+const colorHighlight = "#ffe08f"; // soft orange
+
 // ----------------- UTILITIES -----------------
 function safeArray(arr, index) { return Array.isArray(arr) && arr.length > index ? arr[index] : 0; }
 
@@ -30,7 +36,6 @@ function classMapping(className, data) {
         "TS_CFA_FRA": data.vFinalRinseAmperage ?? 0,
         "TS_CFA_CYCLET": data.vCycleTime ?? 0,
         "TS_CFA_ADF": data.vAdditionalFills ?? 0
-        
     };
     return map[className] ?? 0;
 }
@@ -60,7 +65,6 @@ async function loadResults() {
         renderVisualCheck(data);
         renderChart(data);
 
-        // Auto show Results tab after load
         openTab({ currentTarget: document.querySelector(".tab-button") }, 'ResultTableTab');
 
     } catch (err) {
@@ -80,14 +84,14 @@ async function loadResults() {
 
 // ----------------- SAVE RESULT -----------------
 document.getElementById('saveResultTestBtn').addEventListener('click', async function () {
-    // Collect data from Result Table
+
     const resultRows = document.querySelectorAll('#resultsTable tbody tr');
     const resultData = [];
 
     resultRows.forEach((row) => {
         const partNo = row.getAttribute('data-part');
-        const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
-        const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
+        const resultAct = row.getAttribute('data-actual');
+        const tstStatus = row.getAttribute('data-status');
         resultData.push({
             PartNo: partNo,
             ResultValue: resultAct,
@@ -95,14 +99,13 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
         });
     });
 
-    // Collect data from Visual Check Table
     const visualCheckRows = document.querySelectorAll('#visualCheckTable tbody tr');
     const visualCheckData = [];
 
     visualCheckRows.forEach((row) => {
         const partNo = row.getAttribute('data-part');
-        const resultAct = row.getAttribute('data-actual'); // Collect the actual result from data-actual attribute
-        const tstStatus = row.getAttribute('data-status'); // Collect the test status from data-status attribute
+        const resultAct = row.getAttribute('data-actual');
+        const tstStatus = row.getAttribute('data-status');
         visualCheckData.push({
             PartNo: partNo,
             ResultValue: resultAct,
@@ -110,7 +113,6 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
         });
     });
 
-    // Check for null or empty fields before saving
     if (!resultData || resultData.length === 0) {
         alert("Result Data cannot be empty.");
         return;
@@ -120,7 +122,6 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
         return;
     }
 
-    // Check if each resultData object contains required fields
     for (let i = 1; i < resultData.length; i++) {
         const item = resultData[i];
         if (!item.PartNo || !item.ResultValue || !item.tstStatus) {
@@ -129,29 +130,25 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
         }
     }
 
-    // Check if each visualCheckData object contains required fields
     for (let i = 1; i < visualCheckData.length; i++) {
         const item = visualCheckData[i];
-        if (!item.PartNo || item.ResultValue=="Init" || !item.tstStatus) {
+        if (!item.PartNo || item.ResultValue == "Init" || !item.tstStatus) {
             alert(`Visual Check Data is missing required fields at index ${i + 1}.`);
             return;
         }
     }
 
-    // Check for PartProduct data
     if (!lastData || !lastData.vDataProduct) {
         alert("Product data (PartProduct) cannot be empty.");
         return;
     }
 
-    // Prepare the data to send to the backend
     const dataToSave = {
-        vAutoResults: resultData,  // Data from Result Table
-        vVisualResults: visualCheckData,  // Data from Visual Check Table
+        vAutoResults: resultData,
+        vVisualResults: visualCheckData,
         PartProduct: lastData.vDataProduct
     };
 
-    // Send the data to the backend
     try {
         const response = await fetch('api/CFACal/SaveResultTest', {
             method: 'POST',
@@ -183,8 +180,18 @@ function renderKPIs(data) {
 
     const passPartLimits = partLimits.filter(x => {
         const act = classMapping(x.class, data);
+
+        // Classes to skip limit check
+        const skipClasses = ['TS_CFA_ENER', 'TS_CFA_CYCLET', 'TS_CFA_HEATUP', 'TS_CFA_ADF'];
+
+        if (skipClasses.includes(x.class)) {
+            return true; // automatically pass
+        }
+
+        // Check limits for other classes
         return x.lowerLimit <= act && act <= x.upperLimit;
     }).length;
+
 
     let passVisual = 0;
     visualChecks.forEach(x => {
@@ -215,26 +222,46 @@ function renderTable(data) {
     const table = document.getElementById("resultsTable");
     table.innerHTML = "";
 
-    // Insert table header
     const header = table.insertRow();
     ["Part", "Class", "Description", "Lower", "Actual", "Upper"].forEach(h => header.insertCell().textContent = h);
 
-    // Insert rows with data and `data-part`  attributes
     data.vPartLimits.forEach((item, index) => {
         const actual = classMapping(item.class, data);
         const row = table.insertRow();
-        row.setAttribute('data-part', item.part);  // Set the part number
+        row.setAttribute('data-part', item.part);
 
         [item.part, item.class, item.description, item.lowerLimit, actual, item.upperLimit].forEach(v => {
             row.insertCell().textContent = v ?? 0;
         });
-        row.setAttribute('data-actual', actual);  // Set actual
-        // Style the row based on limit validation
-        row.style.background = (actual < item.lowerLimit || actual > item.upperLimit) ? "#f8d7da" : "#d4edda";
 
-        row.setAttribute('data-status', (actual < item.lowerLimit || actual > item.upperLimit) ? "F" : "P");  // Set Status
-        // Add click event to highlight row
+        row.setAttribute('data-actual', actual);
+
+        if (actual < item.lowerLimit || actual > item.upperLimit)
+            row.style.background = colorFail;
+        else
+            row.style.background = colorPass;
+
+        row.setAttribute('data-status',
+            (actual < item.lowerLimit || actual > item.upperLimit) ? "F" : "P"
+        );
+
+        if (
+            item.class == 'TS_CFA_ENER' ||
+            item.class == 'TS_CFA_CYCLET' ||
+            item.class == 'TS_CFA_HEATUP' ||
+            item.class == 'TS_CFA_ADF'
+        ) {
+            row.style.background = colorSpecial;
+
+            row.setAttribute('data-status',"P");
+        }
+
+      
+
         row.addEventListener("click", () => highlightRow(index));
+
+
+
     });
 }
 
@@ -242,7 +269,6 @@ function renderVisualCheck(data) {
     const table = document.getElementById("visualCheckTable");
     table.innerHTML = "";
 
-    // Insert table header
     const header = table.insertRow();
     ["P/N", "Desc.", "Result"].forEach(h => {
         const th = header.insertCell();
@@ -252,14 +278,11 @@ function renderVisualCheck(data) {
         th.style.textAlign = "left";
     });
 
-    // Insert rows with data and `data-part` attribute
     data.vVisualChecks?.forEach((item, index) => {
         const row = table.insertRow();
-        row.setAttribute('data-part', item.part);  // Set the part number
-       
+        row.setAttribute('data-part', item.part);
         row.setAttribute('data-status', "F");
-       
-        // Create cells for part number, description, and result
+
         const pnCell = row.insertCell();
         pnCell.textContent = item.part ?? "";
         pnCell.style.padding = "6px 12px";
@@ -274,7 +297,6 @@ function renderVisualCheck(data) {
         resultCell.style.padding = "6px 12px";
         resultCell.style.textAlign = "left";
 
-        // Handle non-TS_CFATEST items
         if (item.class !== 'TS_CFATEST') {
             const wrapper = document.createElement("div");
             wrapper.style.display = "flex"; wrapper.style.alignItems = "center"; wrapper.style.gap = "8px";
@@ -282,7 +304,7 @@ function renderVisualCheck(data) {
             const input = document.createElement("input");
             input.type = "text"; input.style.width = "60%"; input.style.height = "32px"; input.style.fontSize = "16px"; input.style.padding = "4px";
             input.value = item.result ?? ""; input.dataset.index = index;
-            
+
             input.addEventListener("input", (e) => updateVisualKPI(e.target, index));
 
             const limitText = document.createElement("span");
@@ -293,12 +315,11 @@ function renderVisualCheck(data) {
             resultCell.appendChild(wrapper);
             row.setAttribute('data-actual', "Init");
         } else {
-            
-            // Handle TS_CFATEST items (checkbox for 'checked')
+
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
             checkbox.dataset.index = index; if (item.result === "checked") checkbox.checked = true;
-          
+
             checkbox.addEventListener("change", (e) => updateVisualKPI(e.target, index));
             resultCell.appendChild(checkbox);
             resultCell.addEventListener("click", e => { if (e.target !== checkbox) checkbox.checked = !checkbox.checked; updateVisualKPI(checkbox, index); });
@@ -315,31 +336,27 @@ function updateVisualKPI(el, index) {
     if (!lastData) return;
 
     const item = lastData.vVisualChecks[index];
-    const row = el.closest("tr"); // Get the closest row element
+    const row = el.closest("tr");
 
-    // If the item class is not 'TS_CFATEST', treat it as a regular input
     if (item.class !== 'TS_CFATEST') {
-        item.result = el.value;  // Update the result with the input value
+        item.result = el.value;
 
         const val = parseFloat(el.value);
         const lower = parseFloat(item.lowerLimit);
         const upper = parseFloat(item.upperLimit);
 
-        // Check if the input value is within the allowed limits
         el.style.borderColor = (isNaN(val) || val < lower || val > upper) ? "red" : "#ccc";
 
-        // Set the actual value as the input value
         row.setAttribute('data-actual', el.value);
-        row.setAttribute('data-status', (isNaN(val) || val < lower || val > upper) ? "F" : "P");  // Set Status
+        row.setAttribute('data-status', (isNaN(val) || val < lower || val > upper) ? "F" : "P");
     } else {
-        item.result = el.checked ? "checked" : "";  // For TS_CFATEST, handle it as a checkbox
-        row.setAttribute('data-actual', el.checked ? "checked" : "uncheck");  // Set actual value for checkbox
-        row.setAttribute('data-status', el.checked ? "P" : "F");  // Set Status
+        item.result = el.checked ? "checked" : "";
+        row.setAttribute('data-actual', el.checked ? "checked" : "uncheck");
+        row.setAttribute('data-status', el.checked ? "P" : "F");
     }
 
-    renderKPIs(lastData);  // Re-render the KPIs based on updated data
+    renderKPIs(lastData);
 }
-
 
 // ----------------- CHART -----------------
 function renderChart(data) {
@@ -372,7 +389,21 @@ function renderChart(data) {
 function highlightRow(index) {
     highlightedIndex = index;
     const tableRows = document.getElementById("resultsTable").rows;
-    for (let i = 1; i < tableRows.length; i++) tableRows[i].classList.toggle("highlight", i - 1 === index);
+    for (let i = 1; i < tableRows.length; i++) {
+        const isSelected = i - 1 === index;
+        tableRows[i].classList.toggle("highlight", isSelected);
+
+        if (isSelected)
+            tableRows[i].style.background = colorHighlight;
+        else {
+            const item = lastData.vPartLimits[i - 1];
+            const actual = classMapping(item.class, lastData);
+            if (actual < item.lowerLimit || actual > item.upperLimit)
+                tableRows[i].style.background = colorFail;
+            else
+                tableRows[i].style.background = colorPass;
+        }
+    }
     updateChartColors();
 }
 
