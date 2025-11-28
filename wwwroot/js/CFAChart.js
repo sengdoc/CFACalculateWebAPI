@@ -398,10 +398,22 @@ function highlightRow(index) {
         else {
             const item = lastData.vPartLimits[i - 1];
             const actual = classMapping(item.class, lastData);
-            if (actual < item.lowerLimit || actual > item.upperLimit)
-                tableRows[i].style.background = colorFail;
-            else
-                tableRows[i].style.background = colorPass;
+
+            // Classes to skip limit check
+            const skipClasses = ['TS_CFA_ENER', 'TS_CFA_CYCLET', 'TS_CFA_HEATUP', 'TS_CFA_ADF'];
+
+            if (skipClasses.includes(item.class)) {
+
+                tableRows[i].style.background = colorSpecial;
+            } else {
+
+                if (actual < item.lowerLimit || actual > item.upperLimit)
+                    tableRows[i].style.background = colorFail;
+                else
+                    tableRows[i].style.background = colorPass;
+            }
+
+           
         }
     }
     updateChartColors();
@@ -467,6 +479,13 @@ document.getElementById("auditInput").addEventListener("keydown", e => { if (e.k
 
 // ----------------- COPY PRODUCT INFO -----------------
 function copyProductInfo() {
-    if (!lastData) return;
-    navigator.clipboard.writeText(lastData.vDataProduct || "").then(() => alert("Copied!"));
+    if (!lastData || !lastData.vDataProduct) return;
+
+    // Split by spaces and take the second element
+    const parts = lastData.vDataProduct.split(" ");
+    const productCode = parts[1] || "";
+
+    navigator.clipboard.writeText(productCode)
+        .catch(err => console.error("Failed to copy text:", err));
 }
+
