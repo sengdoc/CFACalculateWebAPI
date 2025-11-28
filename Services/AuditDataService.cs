@@ -953,28 +953,37 @@ ORDER BY ps.task_reference;
             using var conn = await GetOpenConnectionAsync();
 
             var sql = @"
-        SELECT
-    p.part,
-    p.description,
-    p.class,
-    pt.lower_limit_value,
-    pt.upper_limit_value
-FROM part_structure ps
-INNER JOIN part_structure ps2 ON ps2.part = ps.component AND ps.task = ps2.task
-INNER JOIN part p ON ps2.component = p.part
-INNER JOIN part_test pt ON p.part = pt.part
-WHERE ps.part=@ParentPart AND ps.task=@Task
-AND ps.eff_start <= GETDATE() AND ps.eff_close >= GETDATE()
-AND ps2.eff_start <= GETDATE() AND ps2.eff_close >= GETDATE()
-AND p.class NOT IN (
-    'TS_CFA_INWT','TS_CFA_FVFR','TS_CFA_FVOL',
-    'TS_CFA_FT1','TS_CFA_FT2','TS_CFA_FT3','TS_CFA_FT4','TS_CFA_FT5',
-    'TS_CFA_FF1','TS_CFA_FF2','TS_CFA_FF3','TS_CFA_FF4','TS_CFA_FF5',
-    'TS_CFA_MWT','TS_CFA_FNT','TS_CFA_ENER','TS_CFA_HEATUP','TS_CFA_VOLT',
-    'TS_CFA_MWA','TS_CFA_CYCLET','TS_CFA_ADF'
-)
-ORDER BY p.class,ps2.task_reference;
-    ";
+    SELECT DISTINCT
+        p.part,
+        p.description,
+        p.class,
+        pt.lower_limit_value,
+        pt.upper_limit_value,
+        ps2.task_reference   -- add this
+    FROM part_structure ps
+    INNER JOIN part_structure ps2 
+        ON ps2.part = ps.component AND ps.task = ps2.task
+    INNER JOIN part p 
+        ON ps2.component = p.part
+    INNER JOIN part_test pt 
+        ON p.part = pt.part
+    WHERE ps.part=@ParentPart 
+      AND ps.task=@Task
+      AND ps.eff_start <= GETDATE() 
+      AND ps.eff_close >= GETDATE()
+      AND ps2.eff_start <= GETDATE() 
+      AND ps2.eff_close >= GETDATE()
+      AND p.class NOT IN (
+          'TS_CFA_INWT','TS_CFA_FVFR','TS_CFA_FVOL',
+          'TS_CFA_FT1','TS_CFA_FT2','TS_CFA_FT3','TS_CFA_FT4','TS_CFA_FT5',
+          'TS_CFA_FF1','TS_CFA_FF2','TS_CFA_FF3','TS_CFA_FF4','TS_CFA_FF5',
+          'TS_CFA_MWT','TS_CFA_FNT','TS_CFA_ENER','TS_CFA_HEATUP','TS_CFA_VOLT',
+          'TS_CFA_MWA','TS_CFA_CYCLET','TS_CFA_ADF'
+      )
+    ORDER BY p.class, ps2.task_reference;
+";
+
+
 
             using var cmd = new SqlCommand(sql, (SqlConnection)conn);
             cmd.Parameters.AddWithValue("@ParentPart", parentPart);
