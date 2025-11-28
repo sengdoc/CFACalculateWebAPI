@@ -481,11 +481,25 @@ document.getElementById("auditInput").addEventListener("keydown", e => { if (e.k
 function copyProductInfo() {
     if (!lastData || !lastData.vDataProduct) return;
 
-    // Split by spaces and take the second element
     const parts = lastData.vDataProduct.split(" ");
     const productCode = parts[1] || "";
 
-    navigator.clipboard.writeText(productCode)
-        .catch(err => console.error("Failed to copy text:", err));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        // Modern way
+        navigator.clipboard.writeText(productCode)
+            .catch(err => console.error("Failed to copy text:", err));
+    } else {
+        // Fallback for older browsers
+        const textarea = document.createElement("textarea");
+        textarea.value = productCode;
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand("copy");
+        } catch (err) {
+            console.error("Fallback: unable to copy", err);
+        }
+        document.body.removeChild(textarea);
+    }
 }
 
