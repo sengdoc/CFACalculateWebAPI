@@ -58,7 +58,7 @@ async function loadResults() {
         if (!response.ok) throw new Error(data?.message || `Server responded ${response.status}`);
 
         lastData = data;
-        document.getElementById("productText").innerText = data.vDataProduct || "N/A";
+        document.getElementById("productText").innerText = data.vDataProduct + " : " + data.vTobType  || "N/A";
 
         renderKPIs(data);
         renderTable(data);
@@ -345,10 +345,23 @@ function updateVisualKPI(el, index) {
         const lower = parseFloat(item.lowerLimit);
         const upper = parseFloat(item.upperLimit);
 
-        el.style.borderColor = (isNaN(val) || val < lower || val > upper) ? "red" : "#ccc";
+        if (el) {
+            el.style.borderColor =
+                (isNaN(val) || val < lower || val > upper) ? "red" : "#ccc";
+        }
 
-        row.setAttribute('data-actual', el.value);
-        row.setAttribute('data-status', (isNaN(val) || val < lower || val > upper) ? "F" : "P");
+        if (row) {
+            if (item.class === 'TS_CFA_EE') {
+                row.setAttribute('data-actual', `${el.value} : ${lastData.vTobType}`);
+            } else {
+                row.setAttribute('data-actual', el.value);
+            }
+        }
+
+        row.setAttribute('data-status',
+            (isNaN(val) || val < lower || val > upper) ? "F" : "P"
+        );
+
     } else {
         item.result = el.checked ? "checked" : "";
         row.setAttribute('data-actual', el.checked ? "checked" : "uncheck");

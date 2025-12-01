@@ -1114,7 +1114,7 @@ ORDER BY ps.task_reference;
                         string testPart = visualResult.PartNo ?? "";
                         string testResult = visualResult.ResultValue ?? "";
                         string testStatus = visualResult.tstStatus ?? "";
-
+             
                         // Set parameters and execute the insert command for each visual result
                         AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
                         await cmd.ExecuteNonQueryAsync();

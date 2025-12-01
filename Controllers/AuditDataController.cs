@@ -123,6 +123,7 @@ namespace CFACalculateWebAPI.Controllers
                     vPartLimits = partLimits,
                     vVisualChecks = visualChecks,
                     vAdditionalFills = fillResult.AdditionalFills,
+                    vTobType = TubType
                 });
             }
             catch (Exception ex)
@@ -147,6 +148,9 @@ namespace CFACalculateWebAPI.Controllers
                 {
                     return BadRequest(new { message = "PartProduct is too short to extract both parts." });
                 }
+
+                //string input = "82328 EUV484082 DISHDRAWER DD24DAX9 N FP US : Top";                
+                //string TypeTub = result.PartProduct.Split(' ').Last();   // "Top"
 
                 // Extract the first part (82319)
                 string partCA = result.PartProduct.Substring(0, 5); // Starting at index 0, take 5 characters
