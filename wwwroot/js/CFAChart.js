@@ -58,7 +58,7 @@ async function loadResults() {
         if (!response.ok) throw new Error(data?.message || `Server responded ${response.status}`);
 
         lastData = data;
-        document.getElementById("productText").innerText = data.vDataProduct + " : " + data.vTobType  || "N/A";
+        document.getElementById("productText").innerText = data.vDataProduct + " : " + (data.vTobType || "N/A");
 
         renderKPIs(data);
         renderTable(data);
@@ -132,7 +132,7 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
 
     for (let i = 1; i < visualCheckData.length; i++) {
         const item = visualCheckData[i];
-        if (!item.PartNo || item.ResultValue == "Init" || !item.tstStatus) {
+        if (!item.PartNo || !item.ResultValue || !item.tstStatus) {
             alert(`Visual Check Data is missing required fields at index ${i + 1}.`);
             return;
         }
@@ -169,7 +169,6 @@ document.getElementById('saveResultTestBtn').addEventListener('click', async fun
     }
 });
 
-
 // ----------------- KPI -----------------
 function renderKPIs(data) {
     if (!data) return;
@@ -181,27 +180,21 @@ function renderKPIs(data) {
     const passPartLimits = partLimits.filter(x => {
         const act = classMapping(x.class, data);
 
-        // Classes to skip limit check
         const skipClasses = ['TS_CFA_ENER', 'TS_CFA_CYCLET', 'TS_CFA_HEATUP', 'TS_CFA_ADF'];
+        if (skipClasses.includes(x.class)) return true;
 
-        if (skipClasses.includes(x.class)) {
-            return true; // automatically pass
-        }
-
-        // Check limits for other classes
         return x.lowerLimit <= act && act <= x.upperLimit;
     }).length;
-
 
     let passVisual = 0;
     visualChecks.forEach(x => {
         if (x.class !== 'TS_CFATEST') {
-            const val = parseFloat(x.result);
+            const val = parseFloat(x.result || 0);
             const lower = parseFloat(x.lowerLimit);
             const upper = parseFloat(x.upperLimit);
             if (!isNaN(val) && val >= lower && val <= upper) passVisual++;
         } else {
-            if (x.result === "checked") passVisual++;
+            if (x.result?.startsWith("checked")) passVisual++;
         }
     });
 
@@ -245,23 +238,13 @@ function renderTable(data) {
             (actual < item.lowerLimit || actual > item.upperLimit) ? "F" : "P"
         );
 
-        if (
-            item.class == 'TS_CFA_ENER' ||
-            item.class == 'TS_CFA_CYCLET' ||
-            item.class == 'TS_CFA_HEATUP' ||
-            item.class == 'TS_CFA_ADF'
-        ) {
+        const skipClasses = ['TS_CFA_ENER', 'TS_CFA_CYCLET', 'TS_CFA_HEATUP', 'TS_CFA_ADF'];
+        if (skipClasses.includes(item.class)) {
             row.style.background = colorSpecial;
-
-            row.setAttribute('data-status',"P");
+            row.setAttribute('data-status', "P");
         }
 
-      
-
         row.addEventListener("click", () => highlightRow(index));
-
-
-
     });
 }
 
@@ -270,7 +253,7 @@ function renderVisualCheck(data) {
     table.innerHTML = "";
 
     const header = table.insertRow();
-    ["P/N", "Desc.", "Result"].forEach(h => {
+    ["P/N", "Desc.", "Result", "Comment"].forEach(h => {
         const th = header.insertCell();
         th.textContent = h;
         th.style.fontWeight = "bold";
@@ -278,52 +261,105 @@ function renderVisualCheck(data) {
         th.style.textAlign = "left";
     });
 
-    data.vVisualChecks?.forEach((item, index) => {
+    if (!data || !Array.isArray(data.vVisualChecks)) return;
+
+    data.vVisualChecks.forEach((item, index) => {
         const row = table.insertRow();
-        row.setAttribute('data-part', item.part);
+        row.setAttribute('data-part', item.part ?? "");
         row.setAttribute('data-status', "F");
 
+        // P/N
         const pnCell = row.insertCell();
         pnCell.textContent = item.part ?? "";
         pnCell.style.padding = "6px 12px";
         pnCell.style.textAlign = "left";
 
+        // Desc
         const descCell = row.insertCell();
         descCell.textContent = item.description ?? "";
         descCell.style.padding = "6px 12px";
         descCell.style.textAlign = "left";
 
+        // Result
         const resultCell = row.insertCell();
         resultCell.style.padding = "6px 12px";
         resultCell.style.textAlign = "left";
 
-        if (item.class !== 'TS_CFATEST') {
-            const wrapper = document.createElement("div");
-            wrapper.style.display = "flex"; wrapper.style.alignItems = "center"; wrapper.style.gap = "8px";
+        // Comment
+        const commentCell = row.insertCell();
+        commentCell.style.padding = "6px 12px";
+        commentCell.style.textAlign = "left";
 
+        if (item.class === 'TS_CFATEST') {
+            // Checkbox
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.style.width = "18px";
+            checkbox.style.height = "18px";
+            checkbox.dataset.index = index;
+            checkbox.checked = item.result?.startsWith("OK");
+
+            // Comment input (always enabled)
+            const commentInput = document.createElement("input");
+            commentInput.type = "text";
+            commentInput.className = "vc-comment";
+            commentInput.placeholder = "Key comment here";
+            commentInput.value = item.comment ?? "";
+
+            // Event: checkbox change
+            checkbox.addEventListener("change", (e) => {
+                updateVisualKPI(checkbox, index);
+            });
+
+            // Event: comment input
+            commentInput.addEventListener("input", (e) => {
+                item.comment = e.target.value;
+                updateVisualKPI(checkbox, index);
+            });
+
+            // Clicking result cell toggles checkbox
+            resultCell.addEventListener("click", (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+
+            resultCell.appendChild(checkbox);
+            commentCell.appendChild(commentInput);
+
+            // Set initial row attributes
+            row.setAttribute('data-actual', checkbox.checked ? "OK" : "NG");
+            row.setAttribute('data-status', checkbox.checked ? "P" : "F");
+
+        } else {
+            // Other numeric/text result
             const input = document.createElement("input");
-            input.type = "text"; input.style.width = "60%"; input.style.height = "32px"; input.style.fontSize = "16px"; input.style.padding = "4px";
-            input.value = item.result ?? ""; input.dataset.index = index;
+            input.type = "text";
+            input.style.width = "60%";
+            input.style.height = "32px";
+            input.style.fontSize = "16px";
+            input.style.padding = "4px";
+            input.value = item.result ?? "";
+            input.dataset.index = index;
 
             input.addEventListener("input", (e) => updateVisualKPI(e.target, index));
 
             const limitText = document.createElement("span");
-            limitText.style.fontSize = "14px"; limitText.style.color = "#555";
+            limitText.style.fontSize = "14px";
+            limitText.style.color = "#555";
             limitText.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
 
-            wrapper.appendChild(input); wrapper.appendChild(limitText);
+            const wrapper = document.createElement("div");
+            wrapper.style.display = "flex";
+            wrapper.style.alignItems = "center";
+            wrapper.style.gap = "8px";
+            wrapper.appendChild(input);
+            wrapper.appendChild(limitText);
             resultCell.appendChild(wrapper);
-            row.setAttribute('data-actual', "Init");
-        } else {
 
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox"; checkbox.style.width = "24px"; checkbox.style.height = "24px";
-            checkbox.dataset.index = index; if (item.result === "checked") checkbox.checked = true;
-
-            checkbox.addEventListener("change", (e) => updateVisualKPI(e.target, index));
-            resultCell.appendChild(checkbox);
-            resultCell.addEventListener("click", e => { if (e.target !== checkbox) checkbox.checked = !checkbox.checked; updateVisualKPI(checkbox, index); });
-            row.setAttribute('data-actual', "uncheck");
+            commentCell.textContent = "-";
+            row.setAttribute('data-actual', input.value);
         }
     });
 
@@ -337,39 +373,37 @@ function updateVisualKPI(el, index) {
 
     const item = lastData.vVisualChecks[index];
     const row = el.closest("tr");
+    let val = el.value?.trim() || "";
 
-    if (item.class !== 'TS_CFATEST') {
-        item.result = el.value;
+    if (item.class === 'TS_CFATEST') {
+        const checkbox = row.querySelector("input[type='checkbox']");
+        const comment = item.comment?.trim() || "";
 
-        const val = parseFloat(el.value);
+        if (checkbox.checked) {
+            item.result = comment.length > 0 ? `OK : '${comment}'` : "OK";
+            row.setAttribute('data-status', "P");
+        } else {
+            item.result = comment.length > 0 ? `NG : '${comment}'` : "NG";
+            row.setAttribute('data-status', "F");
+        }
+
+    } else {
+        const numVal = parseFloat(val);
         const lower = parseFloat(item.lowerLimit);
         const upper = parseFloat(item.upperLimit);
 
-        if (el) {
-            el.style.borderColor =
-                (isNaN(val) || val < lower || val > upper) ? "red" : "#ccc";
+        if (!isNaN(numVal) && numVal >= lower && numVal <= upper) {
+            row.setAttribute('data-status', "P");
+        } else {
+            row.setAttribute('data-status', "F");
         }
-
-        if (row) {
-            if (item.class === 'TS_CFA_EE') {
-                row.setAttribute('data-actual', `${el.value} : ${lastData.vTobType}`);
-            } else {
-                row.setAttribute('data-actual', el.value);
-            }
-        }
-
-        row.setAttribute('data-status',
-            (isNaN(val) || val < lower || val > upper) ? "F" : "P"
-        );
-
-    } else {
-        item.result = el.checked ? "checked" : "";
-        row.setAttribute('data-actual', el.checked ? "checked" : "uncheck");
-        row.setAttribute('data-status', el.checked ? "P" : "F");
+        item.result = val;
     }
 
+    row.setAttribute('data-actual', item.result);
     renderKPIs(lastData);
 }
+
 
 // ----------------- CHART -----------------
 function renderChart(data) {
@@ -412,21 +446,16 @@ function highlightRow(index) {
             const item = lastData.vPartLimits[i - 1];
             const actual = classMapping(item.class, lastData);
 
-            // Classes to skip limit check
             const skipClasses = ['TS_CFA_ENER', 'TS_CFA_CYCLET', 'TS_CFA_HEATUP', 'TS_CFA_ADF'];
 
             if (skipClasses.includes(item.class)) {
-
                 tableRows[i].style.background = colorSpecial;
             } else {
-
                 if (actual < item.lowerLimit || actual > item.upperLimit)
                     tableRows[i].style.background = colorFail;
                 else
                     tableRows[i].style.background = colorPass;
             }
-
-           
         }
     }
     updateChartColors();
@@ -447,6 +476,7 @@ function updateChartColors() {
 function exportTable(type) {
     if (!lastData) return;
     const ws = XLSX.utils.json_to_sheet(lastData.vPartLimits.map(x => ({
+
         Part: x.part, Class: x.class, Description: x.description,
         Lower: x.lowerLimit, Actual: classMapping(x.class, lastData), Upper: x.upperLimit
     })));
@@ -471,48 +501,13 @@ function exportChart() {
     a.click();
 }
 
-// ----------------- TAB & COLLAPSIBLE -----------------
+// ----------------- TABS -----------------
 function openTab(evt, tabName) {
-    document.querySelectorAll(".tab-content").forEach(tab => tab.style.display = "none");
-    document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active"));
+    const tabs = document.querySelectorAll(".tab-content");
+    tabs.forEach(t => t.style.display = "none");
     document.getElementById(tabName).style.display = "block";
+
+    const buttons = document.querySelectorAll(".tab-button");
+    buttons.forEach(btn => btn.classList.remove("active"));
     evt.currentTarget.classList.add("active");
 }
-
-document.querySelectorAll(".collapsible").forEach(btn => {
-    btn.addEventListener("click", () => {
-        btn.classList.toggle("active");
-        const content = btn.nextElementSibling;
-        content.style.display = (content.style.display === "block") ? "none" : "block";
-    });
-});
-
-// ----------------- ENTER KEY -----------------
-document.getElementById("auditInput").addEventListener("keydown", e => { if (e.key === "Enter") loadResults(); });
-
-// ----------------- COPY PRODUCT INFO -----------------
-function copyProductInfo() {
-    if (!lastData || !lastData.vDataProduct) return;
-
-    const parts = lastData.vDataProduct.split(" ");
-    const productCode = parts[1] || "";
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        // Modern way
-        navigator.clipboard.writeText(productCode)
-            .catch(err => console.error("Failed to copy text:", err));
-    } else {
-        // Fallback for older browsers
-        const textarea = document.createElement("textarea");
-        textarea.value = productCode;
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            document.execCommand("copy");
-        } catch (err) {
-            console.error("Fallback: unable to copy", err);
-        }
-        document.body.removeChild(textarea);
-    }
-}
-

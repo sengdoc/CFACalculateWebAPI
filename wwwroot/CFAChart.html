@@ -1,12 +1,20 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CFA Enhanced Dashboard</title>
     <link href="css/CFACSS.css" rel="stylesheet" />
     <script src="./lib/chart.js/Chart.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <!-- small style for comment input -->
+    <style>
+        .vc-comment {
+            width: 95%;
+            padding: 4px;
+        }
+    </style>
 </head>
 <body>
     <h1>
@@ -69,9 +77,184 @@
         <canvas id="limitChart" height="120"></canvas>
     </div>
 
+    <!-- keep existing main script - we will override renderVisualCheck after it loads -->
     <script src="js/CFAChart.js"></script>
 
+    <!-- ========= Override renderVisualCheck to include Comment column =========
+         This function will replace the one in CFAChart.js (because it's defined after it)
+         It:
+         - adds a Comment column
+         - creates comment input only for checkbox (TS_CFATEST)
+         - enables comment input only when checkbox is checked
+         - writes comments into lastData.vVisualChecks[index].comment
+         - calls updateVisualKPI for checkbox changes so KPI logic remains synced
+    -->
+    <script>
+        // Defensive check: if CFAChart.js hasn't defined lastData yet, we still support it.
+        // The app uses `lastData` globally, so we'll reference it when present.
 
+        function renderVisualCheck(data) {
+            // If caller passed data, use it; otherwise try global lastData
+            const theData = data || (typeof lastData !== 'undefined' ? lastData : null);
+            const table = document.getElementById("visualCheckTable");
+            table.innerHTML = "";
+
+            // header: include Comment column
+            const header = table.insertRow();
+            ["P/N", "Desc.", "Result", "Comment"].forEach(h => {
+                const th = header.insertCell();
+                th.textContent = h;
+                th.style.fontWeight = "bold";
+                th.style.padding = "8px 12px";
+                th.style.textAlign = "left";
+            });
+
+            if (!theData || !Array.isArray(theData.vVisualChecks)) {
+                // nothing to render
+                return;
+            }
+
+            theData.vVisualChecks.forEach((item, index) => {
+                const row = table.insertRow();
+                row.setAttribute('data-part', item.part ?? "");
+                row.setAttribute('data-status', "F");
+
+                // P/N
+                const pnCell = row.insertCell();
+                pnCell.textContent = item.part ?? "";
+                pnCell.style.padding = "6px 12px";
+                pnCell.style.textAlign = "left";
+
+                // Desc
+                const descCell = row.insertCell();
+                descCell.textContent = item.description ?? "";
+                descCell.style.padding = "6px 12px";
+                descCell.style.textAlign = "left";
+
+                // Result cell
+                const resultCell = row.insertCell();
+                resultCell.style.padding = "6px 12px";
+                resultCell.style.textAlign = "left";
+
+                // Comment cell
+                const commentCell = row.insertCell();
+                commentCell.style.padding = "6px 12px";
+                commentCell.style.textAlign = "left";
+
+                // NON-TS_CFATEST (numeric / text result)
+                if (item.class !== 'TS_CFATEST') {
+                    const wrapper = document.createElement("div");
+                    wrapper.style.display = "flex";
+                    wrapper.style.alignItems = "center";
+                    wrapper.style.gap = "8px";
+
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.style.width = "60%";
+                    input.style.height = "32px";
+                    input.style.fontSize = "16px";
+                    input.style.padding = "4px";
+                    input.value = item.result ?? "";
+                    input.dataset.index = index;
+
+                    input.addEventListener("input", (e) => {
+                        // call existing updateVisualKPI if present to keep KPI logic
+                        if (typeof updateVisualKPI === "function") updateVisualKPI(e.target, index);
+                        // also store into item.result (keep local model in sync)
+                        item.result = e.target.value;
+                    });
+
+                    const limitText = document.createElement("span");
+                    limitText.style.fontSize = "14px";
+                    limitText.style.color = "#555";
+                    limitText.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
+
+                    wrapper.appendChild(input);
+                    wrapper.appendChild(limitText);
+                    resultCell.appendChild(wrapper);
+
+                    commentCell.textContent = "-";
+                    row.setAttribute('data-actual', "Init");
+                    return;
+                }
+
+                // TS_CFATEST => CHECKBOX + COMMENT
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.style.width = "18px";
+                checkbox.style.height = "18px";
+                checkbox.dataset.index = index;
+                // initial checked state from item.result if present
+                checkbox.checked = item.result === "OK";
+
+                // comment input
+                const commentInput = document.createElement("input");
+                commentInput.type = "text";
+                commentInput.className = "vc-comment";
+                commentInput.placeholder = "Key comment here";
+                commentInput.value = item.comment ?? "";
+                //commentInput.disabled = !checkbox.checked;
+
+                // when checkbox changes:
+                checkbox.addEventListener("change", (e) => {
+                    const checked = e.target.checked;
+                    // sync with data model
+                    item.result = checked ? "OK" : "";
+                    // enable/disable comment
+                    commentInput.disabled = !checked;
+                    if (!checked) {
+                        // clear comment in UI and model when unchecked
+                        commentInput.value = "";
+                        item.comment = "";
+                    } else {
+                        // focus when checked
+                        commentInput.focus();
+                    }
+
+                    // call existing KPI update to maintain status and KPIs
+                    if (typeof updateVisualKPI === "function") {
+                        updateVisualKPI(checkbox, index);
+                    } else {
+                        // fallback: set row attributes
+                        row.setAttribute('data-actual', checked ? "OK" : "NG");
+                        row.setAttribute('data-status', checked ? "P" : "F");
+                    }
+                });
+
+                // when user types in comment, save to model
+                commentInput.addEventListener("input", (e) => {
+                    item.comment = e.target.value;   // save user comment
+                    updateVisualKPI(checkbox, index); // update result display and KPI
+                });
+
+
+                // allow clicking cell toggles checkbox like original logic
+                resultCell.addEventListener("click", (e) => {
+                    if (e.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+
+                // append
+                resultCell.appendChild(checkbox);
+                commentCell.appendChild(commentInput);
+
+                // set row attributes consistent with initial state
+                row.setAttribute('data-actual', checkbox.checked ? "OK" : "NG");
+                row.setAttribute('data-status', checkbox.checked ? "P" : "F");
+            });
+
+            // style adjustments if needed (keep border style similar to original)
+            table.style.borderCollapse = "collapse";
+            table.querySelectorAll("td").forEach(td => td.style.border = "1px solid #ccc");
+        }
+
+        // If CFAChart.js invoked renderVisualCheck before we defined it, it might have used older function.
+        // But since we define it after the script tag, it will override the previous one and future calls (loadResults)
+        // will use this implementation.
+
+    </script>
 
 </body>
 </html>

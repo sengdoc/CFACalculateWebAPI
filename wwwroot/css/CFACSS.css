@@ -67,6 +67,24 @@ input {
         box-shadow: 0 0 6px rgba(52, 152, 219, 0.5);
     }
 
+/* -----------------------
+   Visual Check Comment Input
+----------------------- */
+.vc-comment {
+    width: 90%;
+    padding: 6px 8px;
+    font-size: 14px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+    .vc-comment:focus {
+        border-color: #3498db;
+        box-shadow: 0 0 6px rgba(52, 152, 219, 0.5);
+    }
+
 /* =======================
    CUSTOM DROPDOWN
 ======================= */
@@ -215,7 +233,7 @@ table {
 
 th, td {
     border: 1px solid #ddd;
-    padding: 10px;
+    padding: 12px; /* updated from 10px */
     text-align: center;
 }
 
@@ -236,6 +254,17 @@ tr:hover {
 .highlight {
     outline: 3px solid #f39c12;
 }
+
+/* Visual Check table cell adjustment */
+#visualCheckTable td {
+    position: relative;
+}
+
+    #visualCheckTable td input.vc-comment {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
 /* =======================
    TABS
 ======================= */
@@ -245,30 +274,29 @@ tr:hover {
 
 .tab-button {
     background-color: #f1f1f1;
-    border: 1px solid #ddd; /* subtle card-like border */
+    border: 1px solid #ddd;
     outline: none;
     padding: 10px 20px;
     cursor: pointer;
     transition: 0.3s;
     margin-right: 2px;
-    font-weight: 500; /* softer, noticeable text */
-    color: #2c3e50; /* darker text for readability */
+    font-weight: 500;
+    color: #2c3e50;
     border-radius: 6px 6px 0 0;
 }
 
     .tab-button.active {
         background-color: #3498db;
         color: white;
-        font-weight: 600; /* slightly bolder when active */
+        font-weight: 600;
     }
 
     .tab-button:hover:not(.active) {
         background-color: #dfe6e9;
     }
 
-
 /* =======================
-   COLLAPSIBLE (STAR)
+   COLLAPSIBLE
 ======================= */
 .collapsible {
     background: white;
@@ -288,7 +316,7 @@ tr:hover {
     .collapsible .icon {
         display: inline-block;
         font-size: 16px;
-        color: #f1c40f; /* gold */
+        color: #f1c40f;
         transition: transform 0.3s;
     }
 
