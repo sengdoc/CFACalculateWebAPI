@@ -11,6 +11,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Allow CORS for testing
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -21,9 +22,11 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Database context
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Audit service
 builder.Services.AddScoped<AuditDataService>();
 
 // ----------------------
@@ -36,22 +39,26 @@ var app = builder.Build();
 // ----------------------
 app.UseCors("AllowAll");
 app.UseHttpsRedirection();
-app.UseRouting();
 app.UseAuthorization();
 
-// Serve static files
+// Serve static files if any
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // ----------------------
-// Swagger (always enabled, works under virtual directory)
+// Swagger (for virtual directory /DDCFACAL_API)
 // ----------------------
-app.UseSwagger();
+app.UseSwagger(c =>
+{
+    // If hosting under virtual directory, set the route prefix
+    c.RouteTemplate = "swagger/{documentName}/swagger.json";
+});
+
 app.UseSwaggerUI(c =>
 {
-    // Include virtual directory name here
-    c.SwaggerEndpoint("/DDCFACAL_API/swagger/v1/swagger.json", "CFA Calculate API v1");
-    c.RoutePrefix = "swagger";  // Swagger UI will be at /DDCFACAL_API/swagger
+    // The JSON endpoint is relative to the Swagger UI page
+    c.SwaggerEndpoint("./v1/swagger.json", "CFA Calculate API v1");
+    c.RoutePrefix = "swagger"; // Swagger UI will be at /DDCFACAL_API/swagger
 });
 
 // ----------------------
@@ -60,6 +67,6 @@ app.UseSwaggerUI(c =>
 app.MapControllers();
 
 // ----------------------
-// Run the app
+// Run app
 // ----------------------
 app.Run();

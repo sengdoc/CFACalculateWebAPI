@@ -15,9 +15,20 @@ namespace CFACalculateWebAPI.Controllers
         }
 
         /// <summary>
-        /// Run full calculation for a given AuditId and TubType
-        /// GET: api/CFACal/RunFullCalculation
+        /// Run full calculation for a given AuditId and TubType.
         /// </summary>
+        /// <param name="auditId">The Audit ID (required).</param>
+        /// <param name="TubType">
+        /// Tub Type ("Top", "Bot", "Single").  
+        /// Use "AUTO" to auto-detect from product data.
+        /// </param>
+        /// <returns>
+        /// Calculation results including sample runs, timed fills, final fills, fill indicators,
+        /// fill volume, FVFR, temperatures, energy, amperage, voltage, part limits, visual checks,
+        /// additional fills, and Tub Type.
+        /// </returns>
+        /// <response code="200">Returns the calculation results.</response>
+        /// <response code="400">If AuditId is missing, TubType invalid, or an error occurs.</response>
         [HttpGet("RunFullCalculation")]
         public async Task<IActionResult> RunFullCalculation(string? auditId, string? TubType)
         {
@@ -50,9 +61,9 @@ namespace CFACalculateWebAPI.Controllers
                 if (!sampleRuns.Any())
                     return BadRequest(new { message = "No sample runs found." });
 
-                // 3. Fill Calculations & Check Number of Additional Fills
+                // 3. Fill Calculations
                 var endSampleNos = sampleRuns.Select(sr => sr.EndSampleRun).ToList();
-                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[1],DataProduct[4], DataProduct[2], auditId, endSampleNos);
+                var fillResult = await _service.CalTimedFinalFillsNAsync(DataProduct[1], DataProduct[4], DataProduct[2], auditId, endSampleNos);
                 double totalFillVolume = fillResult.FinalFills?.Sum() ?? 0;
 
                 // 4. Main Fill Info
@@ -60,6 +71,7 @@ namespace CFACalculateWebAPI.Controllers
                 var mainFillStart = new List<int>();
                 var mainFillEnd = new List<int>();
                 var fillRanges = new List<(int start, int end)>();
+
                 for (int i = 0; i < fillResult.MainFillIndicators.Count; i++)
                 {
                     if (fillResult.MainFillIndicators[i] > 0)
@@ -69,6 +81,7 @@ namespace CFACalculateWebAPI.Controllers
                         mainFillTimes++;
                     }
                 }
+
                 for (int i = 1; i < mainFillStart.Count; i++)
                 {
                     mainFillEnd.Add(mainFillStart[i]);
@@ -98,8 +111,8 @@ namespace CFACalculateWebAPI.Controllers
                 // 6. Get Part Limits
                 var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "");
 
-                // 7. Get Part Limits
-                var visualChecks = await _service.GetVisualChecksAsync(DataProduct[1],"4625");
+                // 7. Visual Checks
+                var visualChecks = await _service.GetVisualChecksAsync(DataProduct[1], "4625");
 
                 // 8. Return results
                 return Ok(new
@@ -132,7 +145,15 @@ namespace CFACalculateWebAPI.Controllers
             }
         }
 
-
+        /// <summary>
+        /// Save a test result for a product part.
+        /// </summary>
+        /// <param name="result">The test result data transfer object.</param>
+        /// <returns>
+        /// Success message if saved; otherwise, error details.
+        /// </returns>
+        /// <response code="200">Test result saved successfully.</response>
+        /// <response code="400">If required fields are missing or saving fails.</response>
         [HttpPost("SaveResultTest")]
         public async Task<IActionResult> SaveResultTest([FromBody] SaveTestResultDTO result)
         {
@@ -143,31 +164,22 @@ namespace CFACalculateWebAPI.Controllers
                     return BadRequest(new { message = "PartProduct cannot be null or empty." });
                 }
 
-                // Ensure the string has enough length to safely extract the parts
                 if (result.PartProduct.Length < 15)
                 {
                     return BadRequest(new { message = "PartProduct is too short to extract both parts." });
                 }
 
-                //string input = "82328 EUV484082 DISHDRAWER DD24DAX9 N FP US : Top";                
-                //string TypeTub = result.PartProduct.Split(' ').Last();   // "Top"
-
-                // Extract the first part (82319)
-                string partCA = result.PartProduct.Substring(0, 5); // Starting at index 0, take 5 characters
-
-                // Extract the second part (EUV482568)
-                string SerialNo = result.PartProduct.Substring(6, 9); // Starting at index 6, take 9 characters
-
-                // Assuming your SaveTestResultAsync method works with result, you may want to modify it to include the extracted parts
-                // If you want to store them or perform any action with part1 and part2, you can do so here.
+                string partCA = result.PartProduct.Substring(0, 5);
+                string SerialNo = result.PartProduct.Substring(6, 9);
 
                 string runNo = await _service.GetRunNumberAsync(SerialNo, "4625");
-                // Save the test result asynchronously
-              bool isOK =  await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
+                bool isOK = await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
+
                 if (isOK)
                 {
                     await _service.SaveTaskResultAsync(partCA, SerialNo, runNo, "4625");
-                }else
+                }
+                else
                 {
                     return BadRequest(new { message = "Failed to save the test result." });
                 }
@@ -179,7 +191,5 @@ namespace CFACalculateWebAPI.Controllers
                 return BadRequest(new { message = "An error occurred while saving the result.", detail = ex.Message });
             }
         }
-
-
     }
 }
