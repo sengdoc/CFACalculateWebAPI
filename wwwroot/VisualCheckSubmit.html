@@ -5,13 +5,12 @@
     <title>BOM Visual Check with KPI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="css/CFACSS.css" rel="stylesheet" />
-
     <style>
         .vc-comment {
             width: 95%;
             padding: 4px;
         }
-        /* KPI card styles */
+
         .kpi-row {
             display: flex;
             gap: 12px;
@@ -46,6 +45,16 @@
         .kpi-fail .kpi-value {
             color: red;
         }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+            table th, table td {
+                border: 1px solid #ccc;
+                padding: 6px 12px;
+            }
     </style>
 </head>
 <body>
@@ -55,7 +64,6 @@
         BOM Visual Check
     </h1>
 
-    <!-- Input -->
     <div class="product-card">
         <div>
             <label><strong>Serial No:</strong></label><br />
@@ -75,14 +83,12 @@
         </div>
     </div>
 
-    <!-- Loading -->
     <div id="loadingOverlay" style="display:none;">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">
         </div>
     </div>
 
-    <!-- KPI Cards -->
     <div class="kpi-row" id="kpiContainer">
         <div class="kpi-box">
             <div>Total</div>
@@ -98,7 +104,6 @@
         </div>
     </div>
 
-    <!-- Visual Check Table -->
     <div class="card">
         <h3>Visual Check</h3>
         <table id="visualCheckTable"></table>
@@ -111,43 +116,31 @@
         let lastData = { vVisualChecks: [] };
 
         function showLoading(show) {
-            document.getElementById("loadingOverlay").style.display =
-                show ? "flex" : "none";
+            document.getElementById("loadingOverlay").style.display = show ? "flex" : "none";
         }
 
         function loadBOMVisual() {
             const serial = document.getElementById("serialInput").value.trim();
             const task = document.getElementById("taskInput").value;
-
-            if (serial.length < 10) {
-                alert("Invalid Serial No");
-                return;
-            }
-
+            if (serial.length < 10) { alert("Invalid Serial No"); return; }
             const CA = serial.substring(0, 5);
             const SerialNo = serial.substring(5);
-
             showLoading(true);
-
             fetch(`${API_BASE}/GETBOMTest?CA=${CA}&SerialNo=${SerialNo}&Task=${task}`)
                 .then(r => r.json())
                 .then(data => {
                     lastData.vVisualChecks = data.vVisualChecks || [];
                     renderVisualCheck(lastData);
                 })
-                .catch(err => {
-                    console.error(err);
-                    alert("Failed to load BOM visual check");
-                })
+                .catch(err => { console.error(err); alert("Failed to load BOM visual check"); })
                 .finally(() => showLoading(false));
         }
 
-        // Update KPI counts
         function updateKPICount() {
             const total = lastData.vVisualChecks.length;
             let pass = 0, fail = 0;
             lastData.vVisualChecks.forEach(item => {
-                if (item.result === "OK") pass++;
+                if (item.result === "OK" || (!isNaN(item.result) && item.lowerLimit != null && item.upperLimit != null && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit)) pass++;
                 else fail++;
             });
             document.getElementById("kpiTotal").textContent = total;
@@ -155,146 +148,95 @@
             document.getElementById("kpiFail").textContent = fail;
         }
 
-        // Render visual check table
+        function updateVisualResult(item, inputOrCheckbox) {
+            if (inputOrCheckbox.type === "checkbox") {
+                item.result = inputOrCheckbox.checked ? "OK" : "NG";
+            } else {
+                item.result = inputOrCheckbox.value.trim();
+                // color based on limits
+                const val = parseFloat(item.result);
+                if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null) {
+                    if (val >= item.lowerLimit && val <= item.upperLimit) inputOrCheckbox.style.backgroundColor = "#d4edda"; // green
+                    else inputOrCheckbox.style.backgroundColor = "#f8d7da"; // red
+                } else {
+                    inputOrCheckbox.style.backgroundColor = "white";
+                }
+            }
+            updateKPICount();
+        }
+
         function renderVisualCheck(data) {
             const table = document.getElementById("visualCheckTable");
             table.innerHTML = "";
 
-            // Table header
             const header = table.insertRow();
             ["P/N", "Description", "Result", "Comment"].forEach(h => {
                 const th = document.createElement("th");
                 th.textContent = h;
-                th.style.textAlign = "left";
                 header.appendChild(th);
             });
 
-            data.vVisualChecks.forEach((item, index) => {
+            data.vVisualChecks.forEach(item => {
                 const row = table.insertRow();
-                row.setAttribute("data-status", "F");
+                row.setAttribute("data-part", item.part ?? "");
 
-                // P/N
-                const pnCell = row.insertCell();
-                pnCell.textContent = item.part ?? "";
-                pnCell.style.textAlign = "left";
+                const pnCell = row.insertCell(); pnCell.textContent = item.part ?? ""; pnCell.style.textAlign = "left";
+                const descCell = row.insertCell(); descCell.textContent = item.description ?? ""; descCell.style.textAlign = "left";
+                const resultCell = row.insertCell(); resultCell.style.textAlign = "left";
+                const commentCell = row.insertCell(); commentCell.style.textAlign = "left";
 
-                // Description
-                const descCell = row.insertCell();
-                descCell.textContent = item.description ?? "";
-                descCell.style.textAlign = "left";
-
-                // Result cell
-                const resultCell = row.insertCell();
-                resultCell.style.textAlign = "left";
-
-                // Comment cell
-                const commentCell = row.insertCell();
-                commentCell.style.textAlign = "left";
+                const commentInput = document.createElement("input");
+                commentInput.type = "text"; commentInput.className = "vc-comment"; commentInput.placeholder = "Key comment here"; commentInput.value = item.comment ?? "";
+                commentInput.addEventListener("input", () => item.comment = commentInput.value);
 
                 if (item.lowerLimit || item.upperLimit) {
-                    // Input box for parts with limits
-                    const wrapper = document.createElement("div");
-                    wrapper.style.display = "flex";
-                    wrapper.style.alignItems = "center";
-                    wrapper.style.gap = "6px";
-
-                    const input = document.createElement("input");
-                    input.type = "text";
-                    input.value = item.result ?? "";
-                    input.style.width = "80px";
-                    input.style.padding = "4px";
-                    input.dataset.index = index;
-
-                    const limits = document.createElement("span");
-                    limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
-                    
-                    limits.style.padding = "2px 4px";
-                    limits.style.borderRadius = "4px";
-
-                    wrapper.appendChild(input);
-                    wrapper.appendChild(limits);
-                    resultCell.appendChild(wrapper);
-                    commentCell.textContent = "-";
-
-                    input.addEventListener("input", (e) => {
-                        const val = parseFloat(e.target.value);
-                        const lower = parseFloat(item.lowerLimit);
-                        const upper = parseFloat(item.upperLimit);
-
-                        if (!isNaN(val) && !isNaN(lower) && !isNaN(upper)) {
-                            if (val >= lower && val <= upper) {
-                                item.result = "OK";
-                                input.style.backgroundColor = "#d4edda"; // green
-                            } else {
-                                item.result = "NG";
-                                input.style.backgroundColor = "#f8d7da"; // red
-                            }
-                        } else {
-                            item.result = "NG"; // treat empty / invalid as fail
-                            input.style.backgroundColor = "white";
-                        }
-                        updateKPICount();
-                    });
+                    const wrapper = document.createElement("div"); wrapper.style.display = "flex"; wrapper.style.gap = "6px"; wrapper.style.alignItems = "center";
+                    const input = document.createElement("input"); input.type = "text"; input.value = item.result ?? ""; input.style.width = "80px"; input.style.padding = "4px";
+                    const limits = document.createElement("span"); limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
+                    wrapper.appendChild(input); wrapper.appendChild(limits);
+                    resultCell.appendChild(wrapper); commentCell.appendChild(commentInput);
+                    input.addEventListener("input", () => updateVisualResult(item, input));
                 } else {
-                    // Checkbox for parts without limits
-                    const checkbox = document.createElement("input");
-                    checkbox.type = "checkbox";
-                    checkbox.dataset.index = index;
-                    checkbox.checked = item.result === "OK";
-
-                    const commentInput = document.createElement("input");
-                    commentInput.type = "text";
-                    commentInput.className = "vc-comment";
-                    commentInput.placeholder = "Key comment here";
-                    commentInput.value = item.comment ?? "";
-
-                    commentInput.addEventListener("input", () => {
-                        item.comment = commentInput.value;
-                    });
-
-                    resultCell.appendChild(checkbox);
-                    commentCell.appendChild(commentInput);
-
-                    const updateCheckboxResult = () => {
-                        item.result = checkbox.checked ? "OK" : "NG";
-                        updateKPICount();
-                    };
-
-                    checkbox.addEventListener("change", updateCheckboxResult);
-
-                    resultCell.addEventListener("click", (e) => {
-                        if (e.target !== checkbox) {
-                            checkbox.checked = !checkbox.checked;
-                            updateCheckboxResult();
-                        }
-                    });
+                    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = item.result === "OK";
+                    resultCell.appendChild(checkbox); commentCell.appendChild(commentInput);
+                    checkbox.addEventListener("change", () => updateVisualResult(item, checkbox));
+                    resultCell.addEventListener("click", (e) => { if (e.target !== checkbox) { checkbox.checked = !checkbox.checked; updateVisualResult(item, checkbox); } });
                 }
             });
 
             updateKPICount();
         }
 
-        // Save result
-        document.getElementById("saveResultTestBtn").addEventListener("click", () => {
-            const serial = document.getElementById("serialInput").value.trim();
-            if (!serial) return alert("Serial No required");
+        document.getElementById("saveResultTestBtn").addEventListener("click", async () => {
+            const serialInput = document.getElementById("serialInput").value.trim();
+            const taskInput = document.getElementById("taskInput").value.trim();
+            if (!serialInput || !taskInput) { alert("Serial No and Task are required."); return; }
 
-            const payload = {
-                PartProduct: serial,
-                vVisualResults: lastData.vVisualChecks
-            };
+            const CA = serialInput.substring(0, 5); const Serial = serialInput.substring(5);
 
-            fetch(`${API_BASE}/SaveResultTest`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            })
-                .then(r => r.json())
-                .then(res => alert(res.message || "Saved"))
-                .catch(err => {
-                    console.error(err);
-                    alert("Save failed");
+            const visualData = lastData.vVisualChecks.map(item => ({
+                PartNo: item.part,
+                ResultValue: item.result,
+                tstStatus: (item.lowerLimit != null || item.upperLimit != null) ?
+                    (!isNaN(item.result) && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit ? "P" : "F") :
+                    (item.result === "OK" ? "P" : "F"),
+                Comment: item.comment ?? ""
+            }));
+
+            if (!visualData.length) { alert("Visual Check Data cannot be empty."); return; }
+
+            const payload = { CA, SerialNo: Serial, Task: taskInput, vVisualResults: visualData };
+
+            try {
+                const response = await fetch(`${API_BASE}/SaveResultTest`, {
+                    method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
                 });
+                const resJson = await response.json();
+                if (response.ok) alert(resJson.message || "Result saved successfully");
+                else alert(resJson.message || "Error saving result");
+            } catch (err) {
+                console.error(err); alert("An error occurred while saving the result.");
+            }
         });
     </script>
 

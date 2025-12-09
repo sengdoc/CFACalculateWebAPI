@@ -5,5 +5,5 @@
 
     public string? tstStatus { get; set; }
 
-
+    public string? Comment { get; set; }
 }
