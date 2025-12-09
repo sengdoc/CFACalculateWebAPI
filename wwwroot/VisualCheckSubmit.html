@@ -2,12 +2,51 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>BOM Visual Check</title>
+    <title>BOM Visual Check with KPI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Reuse CFA base style -->
     <link href="css/CFACSS.css" rel="stylesheet" />
 
+    <style>
+        .vc-comment {
+            width: 95%;
+            padding: 4px;
+        }
+        /* KPI card styles */
+        .kpi-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .kpi-box {
+            flex: 1;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+            .kpi-box div:first-child {
+                font-size: 14px;
+                color: #555;
+            }
+
+        .kpi-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+
+        .kpi-pass .kpi-value {
+            color: green;
+        }
+
+        .kpi-fail .kpi-value {
+            color: red;
+        }
+    </style>
 </head>
 <body>
 
@@ -16,13 +55,12 @@
         BOM Visual Check
     </h1>
 
-    <!-- ================= INPUT ================= -->
+    <!-- Input -->
     <div class="product-card">
         <div>
             <label><strong>Serial No:</strong></label><br />
             <input type="text" id="serialInput" placeholder="82879ELV485978" />
         </div>
-
         <div>
             <label><strong>Task:</strong></label><br />
             <div class="select-wrapper">
@@ -32,20 +70,35 @@
                 </select>
             </div>
         </div>
-
         <div>
             <button onclick="loadBOMVisual()">Load</button>
         </div>
     </div>
 
-    <!-- ================= LOADING ================= -->
-    <div id="loadingOverlay">
+    <!-- Loading -->
+    <div id="loadingOverlay" style="display:none;">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">
         </div>
     </div>
 
-    <!-- ================= VISUAL CHECK TABLE ================= -->
+    <!-- KPI Cards -->
+    <div class="kpi-row" id="kpiContainer">
+        <div class="kpi-box">
+            <div>Total</div>
+            <div class="kpi-value" id="kpiTotal">0</div>
+        </div>
+        <div class="kpi-box kpi-pass">
+            <div>Pass</div>
+            <div class="kpi-value" id="kpiPass">0</div>
+        </div>
+        <div class="kpi-box kpi-fail">
+            <div>Fail</div>
+            <div class="kpi-value" id="kpiFail">0</div>
+        </div>
+    </div>
+
+    <!-- Visual Check Table -->
     <div class="card">
         <h3>Visual Check</h3>
         <table id="visualCheckTable"></table>
@@ -89,15 +142,30 @@
                 .finally(() => showLoading(false));
         }
 
-        /* ================= VISUAL CHECK RENDER (CFA STYLE) ================= */
+        // Update KPI counts
+        function updateKPICount() {
+            const total = lastData.vVisualChecks.length;
+            let pass = 0, fail = 0;
+            lastData.vVisualChecks.forEach(item => {
+                if (item.result === "OK") pass++;
+                else fail++;
+            });
+            document.getElementById("kpiTotal").textContent = total;
+            document.getElementById("kpiPass").textContent = pass;
+            document.getElementById("kpiFail").textContent = fail;
+        }
+
+        // Render visual check table
         function renderVisualCheck(data) {
             const table = document.getElementById("visualCheckTable");
             table.innerHTML = "";
 
+            // Table header
             const header = table.insertRow();
             ["P/N", "Description", "Result", "Comment"].forEach(h => {
                 const th = document.createElement("th");
                 th.textContent = h;
+                th.style.textAlign = "left";
                 header.appendChild(th);
             });
 
@@ -106,49 +174,107 @@
                 row.setAttribute("data-status", "F");
 
                 // P/N
-                row.insertCell().textContent = item.part ?? "";
+                const pnCell = row.insertCell();
+                pnCell.textContent = item.part ?? "";
+                pnCell.style.textAlign = "left";
 
-                // Desc
-                row.insertCell().textContent = item.description ?? "";
+                // Description
+                const descCell = row.insertCell();
+                descCell.textContent = item.description ?? "";
+                descCell.style.textAlign = "left";
 
-                // Result
+                // Result cell
                 const resultCell = row.insertCell();
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
+                resultCell.style.textAlign = "left";
 
-                checkbox.addEventListener("change", () => {
-                    item.result = checkbox.checked ? "OK" : "";
-                    row.setAttribute("data-status", checkbox.checked ? "P" : "F");
-                    //commentInput.disabled = !checkbox.checked;
-                    if (!checkbox.checked) {
-                        commentInput.value = "";
-                        item.comment = "";
-                    }
-                });
-
-                resultCell.appendChild(checkbox);
-
-                // Comment
+                // Comment cell
                 const commentCell = row.insertCell();
-                const commentInput = document.createElement("input");
-                commentInput.type = "text";
-                commentInput.className = "vc-comment";
-                commentInput.placeholder = "Key comment here";
-                //commentInput.disabled = true;
+                commentCell.style.textAlign = "left";
 
-                commentInput.addEventListener("input", () => {
-                    item.comment = commentInput.value;
-                });
+                if (item.lowerLimit || item.upperLimit) {
+                    // Input box for parts with limits
+                    const wrapper = document.createElement("div");
+                    wrapper.style.display = "flex";
+                    wrapper.style.alignItems = "center";
+                    wrapper.style.gap = "6px";
 
-                commentCell.appendChild(commentInput);
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.value = item.result ?? "";
+                    input.style.width = "80px";
+                    input.style.padding = "4px";
+                    input.dataset.index = index;
 
-                // init model
-                item.result = "";
-                item.comment = "";
+                    const limits = document.createElement("span");
+                    limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
+                    
+                    limits.style.padding = "2px 4px";
+                    limits.style.borderRadius = "4px";
+
+                    wrapper.appendChild(input);
+                    wrapper.appendChild(limits);
+                    resultCell.appendChild(wrapper);
+                    commentCell.textContent = "-";
+
+                    input.addEventListener("input", (e) => {
+                        const val = parseFloat(e.target.value);
+                        const lower = parseFloat(item.lowerLimit);
+                        const upper = parseFloat(item.upperLimit);
+
+                        if (!isNaN(val) && !isNaN(lower) && !isNaN(upper)) {
+                            if (val >= lower && val <= upper) {
+                                item.result = "OK";
+                                input.style.backgroundColor = "#d4edda"; // green
+                            } else {
+                                item.result = "NG";
+                                input.style.backgroundColor = "#f8d7da"; // red
+                            }
+                        } else {
+                            item.result = "NG"; // treat empty / invalid as fail
+                            input.style.backgroundColor = "white";
+                        }
+                        updateKPICount();
+                    });
+                } else {
+                    // Checkbox for parts without limits
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.dataset.index = index;
+                    checkbox.checked = item.result === "OK";
+
+                    const commentInput = document.createElement("input");
+                    commentInput.type = "text";
+                    commentInput.className = "vc-comment";
+                    commentInput.placeholder = "Key comment here";
+                    commentInput.value = item.comment ?? "";
+
+                    commentInput.addEventListener("input", () => {
+                        item.comment = commentInput.value;
+                    });
+
+                    resultCell.appendChild(checkbox);
+                    commentCell.appendChild(commentInput);
+
+                    const updateCheckboxResult = () => {
+                        item.result = checkbox.checked ? "OK" : "NG";
+                        updateKPICount();
+                    };
+
+                    checkbox.addEventListener("change", updateCheckboxResult);
+
+                    resultCell.addEventListener("click", (e) => {
+                        if (e.target !== checkbox) {
+                            checkbox.checked = !checkbox.checked;
+                            updateCheckboxResult();
+                        }
+                    });
+                }
             });
+
+            updateKPICount();
         }
 
-        /* ================= SAVE RESULT ================= */
+        // Save result
         document.getElementById("saveResultTestBtn").addEventListener("click", () => {
             const serial = document.getElementById("serialInput").value.trim();
             if (!serial) return alert("Serial No required");
