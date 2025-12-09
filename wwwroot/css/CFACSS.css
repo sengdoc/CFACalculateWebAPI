@@ -218,6 +218,13 @@ input {
     margin-top: 6px;
 }
 
+.kpi-pass .kpi-value {
+    color: green;
+}
+
+.kpi-fail .kpi-value {
+    color: red;
+}
 /* =======================
    TABLES
 ======================= */
