@@ -149,35 +149,42 @@ namespace CFACalculateWebAPI.Controllers
         [HttpGet("GETBOMTest")]
         public async Task<IActionResult> GETBOMTest(string? CA, string? SerialNo, string? Task)
         {
+            if (string.IsNullOrEmpty(CA) || string.IsNullOrEmpty(Task))
+                return BadRequest("CA and Task are required.");
+
             try
             {
-                if (string.IsNullOrEmpty(CA))
-                    return BadRequest(new { message = "CA is required" });
-
-                if (string.IsNullOrEmpty(SerialNo))
-                    return BadRequest(new { message = "SerialNo is required" });
-
-                if (string.IsNullOrEmpty(Task))
-                    return BadRequest(new { message = "Task is required" });
-
-                // Get Visual Check only (BOM-based)
+                // 1. Fetch visual check items from database
                 var visualChecks = await _service.GetVisualChecksByCAAsync(CA, Task);
 
-                return Ok(new
+                // 2. Prepare response
+                var response = new
                 {
-                    vVisualChecks = visualChecks,
-                    PartProduct = $"{CA}{SerialNo}" // helpful for frontend save
-                });
+                    CA = CA,
+                    SerialNo = SerialNo,
+                    Task = Task,
+                    vVisualChecks = visualChecks.Select(x => new
+                    {
+                        Part = x.Part,
+                        Description = x.Description,
+                        Class = x.Class,
+                        lowerLimit = x.lowerLimit,
+                        upperLimit = x.upperLimit,
+                        test_tag = x.test_tag,
+                        result = "",      // default empty, will be filled in UI
+                        comment = ""      // default empty
+                    }).ToList()
+                };
+
+                return Ok(response);
             }
             catch (Exception ex)
             {
-                return BadRequest(new
-                {
-                    message = "An error occurred while processing the request.",
-                    detail = ex.Message
-                });
+                // Log the exception if needed
+                return StatusCode(500, $"Error fetching BOM test: {ex.Message}");
             }
         }
+
 
         /// <summary>
         /// Save a test result for a product part.

@@ -55,14 +55,15 @@
                 border: 1px solid #ccc;
                 padding: 6px 12px;
             }
+
+            /* Optional: highlight checked rows */
+            table tr.checked {
+                background-color: #f0fff0;
+            }
     </style>
 </head>
 <body>
-
-    <h1>
-        <img src="./Img/FPALogo.png" alt="logo">
-        BOM Visual Check
-    </h1>
+    <h1><img src="./Img/FPALogo.png" alt="logo"> BOM Visual Check</h1>
 
     <div class="product-card">
         <div>
@@ -89,20 +90,7 @@
         </div>
     </div>
 
-    <div class="kpi-row" id="kpiContainer">
-        <div class="kpi-box">
-            <div>Total</div>
-            <div class="kpi-value" id="kpiTotal">0</div>
-        </div>
-        <div class="kpi-box kpi-pass">
-            <div>Pass</div>
-            <div class="kpi-value" id="kpiPass">0</div>
-        </div>
-        <div class="kpi-box kpi-fail">
-            <div>Fail</div>
-            <div class="kpi-value" id="kpiFail">0</div>
-        </div>
-    </div>
+    <div class="kpi-row" id="kpiContainer"></div>
 
     <div class="card">
         <h3>Visual Check</h3>
@@ -125,12 +113,13 @@
             if (serial.length < 10) { alert("Invalid Serial No"); return; }
             const CA = serial.substring(0, 5);
             const SerialNo = serial.substring(5);
+
             showLoading(true);
             fetch(`${API_BASE}/GETBOMTest?CA=${CA}&SerialNo=${SerialNo}&Task=${task}`)
                 .then(r => r.json())
                 .then(data => {
                     lastData.vVisualChecks = data.vVisualChecks || [];
-                    renderVisualCheck(lastData);
+                    renderVisualCheck();
                 })
                 .catch(err => { console.error(err); alert("Failed to load BOM visual check"); })
                 .finally(() => showLoading(false));
@@ -140,12 +129,20 @@
             const total = lastData.vVisualChecks.length;
             let pass = 0, fail = 0;
             lastData.vVisualChecks.forEach(item => {
-                if (item.result === "OK" || (!isNaN(item.result) && item.lowerLimit != null && item.upperLimit != null && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit)) pass++;
-                else fail++;
+                if (item.test_tag === 'VSCHK') {
+                    if (item.result === "OK") pass++; else fail++;
+                } else {
+                    const val = parseFloat(item.result);
+                    if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null && val >= item.lowerLimit && val <= item.upperLimit) pass++;
+                    else fail++;
+                }
             });
-            document.getElementById("kpiTotal").textContent = total;
-            document.getElementById("kpiPass").textContent = pass;
-            document.getElementById("kpiFail").textContent = fail;
+
+            document.getElementById("kpiContainer").innerHTML = `
+                    <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
+                    <div class="kpi-box kpi-pass">Pass<div class="kpi-value">${pass}</div></div>
+                    <div class="kpi-box kpi-fail">Fail<div class="kpi-value">${fail}</div></div>
+                `;
         }
 
         function updateVisualResult(item, inputOrCheckbox) {
@@ -153,57 +150,71 @@
                 item.result = inputOrCheckbox.checked ? "OK" : "NG";
             } else {
                 item.result = inputOrCheckbox.value.trim();
-                // color based on limits
                 const val = parseFloat(item.result);
                 if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null) {
-                    if (val >= item.lowerLimit && val <= item.upperLimit) inputOrCheckbox.style.backgroundColor = "#d4edda"; // green
-                    else inputOrCheckbox.style.backgroundColor = "#f8d7da"; // red
-                } else {
-                    inputOrCheckbox.style.backgroundColor = "white";
-                }
+                    inputOrCheckbox.style.backgroundColor = (val >= item.lowerLimit && val <= item.upperLimit) ? "#d4edda" : "#f8d7da";
+                } else inputOrCheckbox.style.backgroundColor = "white";
             }
             updateKPICount();
         }
 
-        function renderVisualCheck(data) {
+        function renderVisualCheck() {
             const table = document.getElementById("visualCheckTable");
             table.innerHTML = "";
-
             const header = table.insertRow();
-            ["P/N", "Description", "Result", "Comment"].forEach(h => {
-                const th = document.createElement("th");
-                th.textContent = h;
-                header.appendChild(th);
-            });
+            ["P/N", "Description", "Result", "Comment"].forEach(h => header.insertCell().textContent = h);
 
-            data.vVisualChecks.forEach(item => {
+            lastData.vVisualChecks.forEach((item) => {
                 const row = table.insertRow();
                 row.setAttribute("data-part", item.part ?? "");
 
-                const pnCell = row.insertCell(); pnCell.textContent = item.part ?? ""; pnCell.style.textAlign = "left";
-                const descCell = row.insertCell(); descCell.textContent = item.description ?? ""; descCell.style.textAlign = "left";
-                const resultCell = row.insertCell(); resultCell.style.textAlign = "left";
-                const commentCell = row.insertCell(); commentCell.style.textAlign = "left";
+                const pnCell = row.insertCell(); pnCell.textContent = item.part ?? "";
+                const descCell = row.insertCell(); descCell.textContent = item.description ?? "";
+                const resultCell = row.insertCell();
+                const commentCell = row.insertCell();
 
                 const commentInput = document.createElement("input");
-                commentInput.type = "text"; commentInput.className = "vc-comment"; commentInput.placeholder = "Key comment here"; commentInput.value = item.comment ?? "";
+                commentInput.type = "text";
+                commentInput.className = "vc-comment";
+                commentInput.placeholder = "Key comment here";
+                commentInput.value = item.comment ?? "";
                 commentInput.addEventListener("input", () => item.comment = commentInput.value);
+                commentCell.appendChild(commentInput);
 
-                if (item.lowerLimit || item.upperLimit) {
-                    const wrapper = document.createElement("div"); wrapper.style.display = "flex"; wrapper.style.gap = "6px"; wrapper.style.alignItems = "center";
-                    const input = document.createElement("input"); input.type = "text"; input.value = item.result ?? ""; input.style.width = "80px"; input.style.padding = "4px";
-                    const limits = document.createElement("span"); limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
-                    wrapper.appendChild(input); wrapper.appendChild(limits);
-                    resultCell.appendChild(wrapper); commentCell.appendChild(commentInput);
+                if (item.test_tag === 'LMCHK') {
+                    const wrapper = document.createElement("div");
+                    wrapper.style.display = "flex";
+                    wrapper.style.alignItems = "center";
+                    wrapper.style.gap = "6px";
+
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.value = item.result ?? "";
+                    input.style.width = "80px";
                     input.addEventListener("input", () => updateVisualResult(item, input));
-                } else {
-                    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = item.result === "OK";
-                    resultCell.appendChild(checkbox); commentCell.appendChild(commentInput);
+
+                    const limits = document.createElement("span");
+                    limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
+
+                    wrapper.appendChild(input);
+                    wrapper.appendChild(limits);
+                    resultCell.appendChild(wrapper);
+                } else if (item.test_tag === 'VSCHK') {
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.checked = item.result === "OK";
                     checkbox.addEventListener("change", () => updateVisualResult(item, checkbox));
-                    resultCell.addEventListener("click", (e) => { if (e.target !== checkbox) { checkbox.checked = !checkbox.checked; updateVisualResult(item, checkbox); } });
+                    resultCell.appendChild(checkbox);
+
+                    // Only clicking the Result cell toggles checkbox
+                    resultCell.addEventListener("click", (e) => {
+                        if (e.target !== checkbox) {
+                            checkbox.checked = !checkbox.checked;
+                            updateVisualResult(item, checkbox);
+                        }
+                    });
                 }
             });
-
             updateKPICount();
         }
 
@@ -212,18 +223,18 @@
             const taskInput = document.getElementById("taskInput").value.trim();
             if (!serialInput || !taskInput) { alert("Serial No and Task are required."); return; }
 
-            const CA = serialInput.substring(0, 5); const Serial = serialInput.substring(5);
+            const CA = serialInput.substring(0, 5);
+            const Serial = serialInput.substring(5);
 
             const visualData = lastData.vVisualChecks.map(item => ({
                 PartNo: item.part,
                 ResultValue: item.result,
-                tstStatus: (item.lowerLimit != null || item.upperLimit != null) ?
-                    (!isNaN(item.result) && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit ? "P" : "F") :
-                    (item.result === "OK" ? "P" : "F"),
+                tstStatus: (item.test_tag === 'VSCHK')
+                    ? (item.result === "OK" ? "P" : "F")
+                    : (!isNaN(item.result) && item.lowerLimit != null && item.upperLimit != null && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit ? "P" : "F"),
                 Comment: item.comment ?? ""
             }));
 
-            if (!visualData.length) { alert("Visual Check Data cannot be empty."); return; }
             const payload = {
                 CA: CA,
                 SerialNo: Serial,
@@ -232,19 +243,17 @@
                 TypeInput: 'VSCHK'
             };
 
-
             try {
-                const response = await fetch(`${API_BASE}/SaveResultTest`, {
-                    method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                const resp = await fetch(`${API_BASE}/SaveResultTest`, {
+                    method: 'POST',
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
                 });
-                const resJson = await response.json();
-                if (response.ok) alert(resJson.message || "Result saved successfully");
+                const resJson = await resp.json();
+                if (resp.ok) alert(resJson.message || "Result saved successfully");
                 else alert(resJson.message || "Error saving result");
-            } catch (err) {
-                console.error(err); alert("An error occurred while saving the result.");
-            }
+            } catch (err) { console.error(err); alert("Error saving result"); }
         });
     </script>
-
 </body>
 </html>

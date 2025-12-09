@@ -5,4 +5,6 @@
     public string? Class { get; set; }
     public string? lowerLimit { get; set; }
     public string? upperLimit { get; set; }
+
+    public string? test_tag { get; set; }
 }

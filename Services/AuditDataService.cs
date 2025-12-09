@@ -1067,26 +1067,23 @@ ORDER BY ps.task_reference;
 
             var sql = @"
         SELECT
-    ps.component,
-    p.description,
-    p.class,
-    pt.lower_limit_value,
-    pt.upper_limit_value
-FROM part_structure ps
-INNER JOIN part p
-    ON p.part = ps.component
-INNER JOIN part_test pt
-    ON pt.part = p.part
-INNER JOIN part_issue pi
-    ON pi.part = p.part
-WHERE ps.part = @CA
-  AND ps.task = @Task
-  AND ps.eff_start <= GETDATE()
-  AND ps.eff_close >= GETDATE()
-  AND pi.eff_start <= GETDATE()
-  AND pi.eff_close >= GETDATE()
-ORDER BY ps.task_reference;
-
+            ps.component,
+            p.description,
+            p.class,
+            pt.lower_limit_value,
+            pt.upper_limit_value,
+            pt.test_tag
+        FROM part_structure ps
+        INNER JOIN part p ON p.part = ps.component
+        INNER JOIN part_test pt ON pt.part = p.part
+        INNER JOIN part_issue pi ON pi.part = p.part
+        WHERE ps.part = @CA
+          AND ps.task = @Task
+          AND ps.eff_start <= GETDATE()
+          AND ps.eff_close >= GETDATE()
+          AND pi.eff_start <= GETDATE()
+          AND pi.eff_close >= GETDATE()
+        ORDER BY ps.task_reference;
     ";
 
             using var cmd = new SqlCommand(sql, (SqlConnection)conn);
@@ -1097,18 +1094,10 @@ ORDER BY ps.task_reference;
 
             while (await reader.ReadAsync())
             {
-                // Read class first (needed for special handling)
                 string? className = reader.IsDBNull(2) ? null : reader.GetString(2);
-
-                double? lower = reader.IsDBNull(3)
-                    ? (double?)null
-                    : Convert.ToDouble(reader.GetValue(3));
-
-                double? upper = reader.IsDBNull(4)
-                    ? (double?)null
-                    : Convert.ToDouble(reader.GetValue(4));
-
-               
+                double? lower = reader.IsDBNull(3) ? (double?)null : Convert.ToDouble(reader.GetValue(3));
+                double? upper = reader.IsDBNull(4) ? (double?)null : Convert.ToDouble(reader.GetValue(4));
+                string? testTag = reader.IsDBNull(5) ? null : reader.GetString(5);
 
                 visualChecks.Add(new VisualCheckItem
                 {
@@ -1116,12 +1105,14 @@ ORDER BY ps.task_reference;
                     Description = reader.IsDBNull(1) ? null : reader.GetString(1),
                     Class = className,
                     lowerLimit = lower?.ToString(),
-                    upperLimit = upper?.ToString()
+                    upperLimit = upper?.ToString(),
+                    test_tag = testTag
                 });
             }
 
             return visualChecks;
         }
+
 
 
         public async Task<bool> SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result, string taskNo)

@@ -511,3 +511,29 @@ function openTab(evt, tabName) {
     buttons.forEach(btn => btn.classList.remove("active"));
     evt.currentTarget.classList.add("active");
 }
+
+
+function copyProductInfo() {
+    if (!lastData || !lastData.vDataProduct) return;
+
+    const parts = lastData.vDataProduct.split(" ");
+    const productCode = parts[1] || "";
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        // Modern way
+        navigator.clipboard.writeText(productCode)
+            .catch(err => console.error("Failed to copy text:", err));
+    } else {
+        // Fallback for older browsers
+        const textarea = document.createElement("textarea");
+        textarea.value = productCode;
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand("copy");
+        } catch (err) {
+            console.error("Fallback: unable to copy", err);
+        }
+        document.body.removeChild(textarea);
+    }
+}
