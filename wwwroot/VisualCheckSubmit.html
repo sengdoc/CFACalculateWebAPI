@@ -224,8 +224,14 @@
             }));
 
             if (!visualData.length) { alert("Visual Check Data cannot be empty."); return; }
+            const payload = {
+                CA: CA,
+                SerialNo: Serial,
+                Task: taskInput,
+                vVisualResults: visualData,
+                TypeInput: 'VSCHK'
+            };
 
-            const payload = { CA, SerialNo: Serial, Task: taskInput, vVisualResults: visualData };
 
             try {
                 const response = await fetch(`${API_BASE}/SaveResultTest`, {

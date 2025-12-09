@@ -842,7 +842,7 @@ WHERE auditid = {(string.IsNullOrEmpty(auditId)
 
 
 
-        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo, string typeTub)
+        public async Task<List<PartLimit>> GetPartLimitsAsync(string parentPart, string serialNo, string typeTub, string taskNo)
         {
             var limits = new List<PartLimit>();
 
@@ -896,7 +896,7 @@ WHERE ps2.part = @ParentPart
 
             sql.AppendLine(@"
   AND tsl.test_unit_id = 'Celsius'
-  AND ps2.task = 4625
+  AND ps2.task = @TaskNo
   AND ps.eff_start <= GETDATE()
   AND ps.eff_close >= GETDATE()
   AND pii.eff_start <= GETDATE()
@@ -913,15 +913,12 @@ WHERE ps2.part = @ParentPart
 ORDER BY ps.task_reference;
 ");
 
-
-            // Use SqlCommand (NOW AddWithValue works)
             using var cmd = new SqlCommand(sql.ToString(), (SqlConnection)conn);
 
-            // Always add mandatory parameters
             cmd.Parameters.AddWithValue("@ParentPart", parentPart);
             cmd.Parameters.AddWithValue("@Serial", serialNo);
+            cmd.Parameters.AddWithValue("@TaskNo", taskNo); // <-- dynamic task
 
-            // Optional parameter — only add when needed
             if (typeTub == "Top" || typeTub == "Bot")
             {
                 cmd.Parameters.AddWithValue("@TypeTub", typeTub);
@@ -940,7 +937,6 @@ ORDER BY ps.task_reference;
                     LowerLimit = reader.IsDBNull(4) ? (double?)null : Convert.ToDouble(reader.GetValue(4)),
                     UpperLimit = reader.IsDBNull(5) ? (double?)null : Convert.ToDouble(reader.GetValue(5)),
                 });
-
             }
 
             return limits;
@@ -983,6 +979,8 @@ ORDER BY ps.task_reference;
 
             return run;
         }
+
+        // DD CFA ONLY
         public async Task<List<VisualCheckItem>> GetVisualChecksAsync(string parentPart, string task = "4625")
         {
             var visualChecks = new List<VisualCheckItem>();
@@ -1126,7 +1124,7 @@ ORDER BY ps.task_reference;
         }
 
 
-        public async Task<bool> SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result)
+        public async Task<bool> SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result, string taskNo)
         {
             bool isSuccess = false;
 
@@ -1185,7 +1183,7 @@ ORDER BY ps.task_reference;
                         string testStatus = visualResult.tstStatus ?? "";
              
                         // Set parameters and execute the insert command for each visual result
-                        AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+                        AddTestResultParameters(cmd, partCa, SerialNo, taskNo, "000", runNo, testPart, testResult, testStatus, "1");
                         await cmd.ExecuteNonQueryAsync();
                     }
                 }
@@ -1200,7 +1198,7 @@ ORDER BY ps.task_reference;
                         string testStatus = autoResult.tstStatus ?? "";
 
                         // Set parameters and execute the insert command for each auto result
-                        AddTestResultParameters(cmd, partCa, SerialNo, "4625", "000", runNo, testPart, testResult, testStatus, "1");
+                        AddTestResultParameters(cmd, partCa, SerialNo, taskNo, "000", runNo, testPart, testResult, testStatus, "1");
                         await cmd.ExecuteNonQueryAsync();
                     }
                 }

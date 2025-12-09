@@ -110,7 +110,7 @@ namespace CFACalculateWebAPI.Controllers
                 var voltage = await _service.CalVoltAsync(DataProduct[2], auditId);
 
                 // 6. Get Part Limits
-                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "");
+                var partLimits = await _service.GetPartLimitsAsync(DataProduct[1], DataProduct[2], TubType ?? "","4625");
 
                 // 7. Visual Checks
                 var visualChecks = await _service.GetVisualChecksAsync(DataProduct[1], "4625");
@@ -193,6 +193,17 @@ namespace CFACalculateWebAPI.Controllers
         {
             try
             {
+                string partCA = "";
+                string SerialNo = "";
+                string TaskNo = "4625";
+                if (result.TypeInput == "VSCHK")
+                {
+                    partCA = result.CA ?? "";
+                    SerialNo = result.SerialNo ?? "";
+                    TaskNo = result.Task ?? "";
+                }
+                else
+                { 
                 if (string.IsNullOrEmpty(result.PartProduct))
                 {
                     return BadRequest(new { message = "PartProduct cannot be null or empty." });
@@ -203,15 +214,15 @@ namespace CFACalculateWebAPI.Controllers
                     return BadRequest(new { message = "PartProduct is too short to extract both parts." });
                 }
 
-                string partCA = result.PartProduct.Substring(0, 5);
-                string SerialNo = result.PartProduct.Substring(6, 9);
-
-                string runNo = await _service.GetRunNumberAsync(SerialNo, "4625");
-                bool isOK = await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result);
+                 partCA = result.PartProduct.Substring(0, 5);
+                 SerialNo = result.PartProduct.Substring(6, 9);
+                }
+                string runNo = await _service.GetRunNumberAsync(SerialNo, TaskNo);
+                bool isOK = await _service.SaveTestResultAsync(partCA, SerialNo, runNo, result, TaskNo);
 
                 if (isOK)
                 {
-                    await _service.SaveTaskResultAsync(partCA, SerialNo, runNo, "4625");
+                    await _service.SaveTaskResultAsync(partCA, SerialNo, runNo, TaskNo);
                 }
                 else
                 {
