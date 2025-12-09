@@ -946,6 +946,43 @@ ORDER BY ps.task_reference;
             return limits;
         }
 
+        public async Task<string> GetRunNumberAsync(string SerialNo, string atask)
+        {
+            string run = "1";
+
+            // SQL query to get the maximum run_number
+            string queryString = @"
+        SELECT MAX(run_number) AS run 
+        FROM test_result 
+        WHERE serial = @SerialNo AND task = @Task";
+
+            // Open the connection asynchronously
+            using var conn = await GetOpenConnectionAsync(); // Assuming you have this method to open the connection asynchronously
+            using var cmd = new SqlCommand(queryString, (SqlConnection)conn);
+
+            // Add parameters to the command to prevent SQL injection
+            cmd.Parameters.AddWithValue("@SerialNo", SerialNo);
+            cmd.Parameters.AddWithValue("@Task", atask);
+
+            // Execute the query asynchronously and read the result
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            if (await reader.ReadAsync())
+            {
+                // Check if the result is null or empty, and handle accordingly
+                if (reader.IsDBNull(reader.GetOrdinal("run")))
+                {
+                    run = "1";
+                }
+                else
+                {
+                    // Increment the max value of the 'run' field
+                    run = (reader.GetInt32(reader.GetOrdinal("run")) + 1).ToString();
+                }
+            }
+
+            return run;
+        }
         public async Task<List<VisualCheckItem>> GetVisualChecksAsync(string parentPart, string task = "4625")
         {
             var visualChecks = new List<VisualCheckItem>();
@@ -1019,43 +1056,75 @@ ORDER BY ps.task_reference;
             return visualChecks;
         }
 
-        public async Task<string> GetRunNumberAsync(string SerialNo, string atask)
+        public async Task<List<VisualCheckItem>> GetVisualChecksByCAAsync(
+      string? CA,
+      string? task)
         {
-            string run = "1";
+            var visualChecks = new List<VisualCheckItem>();
 
-            // SQL query to get the maximum run_number
-            string queryString = @"
-        SELECT MAX(run_number) AS run 
-        FROM test_result 
-        WHERE serial = @SerialNo AND task = @Task";
+            if (string.IsNullOrEmpty(CA) || string.IsNullOrEmpty(task))
+                return visualChecks;
 
-            // Open the connection asynchronously
-            using var conn = await GetOpenConnectionAsync(); // Assuming you have this method to open the connection asynchronously
-            using var cmd = new SqlCommand(queryString, (SqlConnection)conn);
+            using var conn = await GetOpenConnectionAsync();
 
-            // Add parameters to the command to prevent SQL injection
-            cmd.Parameters.AddWithValue("@SerialNo", SerialNo);
-            cmd.Parameters.AddWithValue("@Task", atask);
+            var sql = @"
+        SELECT
+    ps.component,
+    p.description,
+    p.class,
+    pt.lower_limit_value,
+    pt.upper_limit_value
+FROM part_structure ps
+INNER JOIN part p
+    ON p.part = ps.component
+INNER JOIN part_test pt
+    ON pt.part = p.part
+INNER JOIN part_issue pi
+    ON pi.part = p.part
+WHERE ps.part = @CA
+  AND ps.task = @Task
+  AND ps.eff_start <= GETDATE()
+  AND ps.eff_close >= GETDATE()
+  AND pi.eff_start <= GETDATE()
+  AND pi.eff_close >= GETDATE()
+ORDER BY ps.task_reference;
 
-            // Execute the query asynchronously and read the result
+    ";
+
+            using var cmd = new SqlCommand(sql, (SqlConnection)conn);
+            cmd.Parameters.AddWithValue("@CA", CA);
+            cmd.Parameters.AddWithValue("@Task", task);
+
             using var reader = await cmd.ExecuteReaderAsync();
 
-            if (await reader.ReadAsync())
+            while (await reader.ReadAsync())
             {
-                // Check if the result is null or empty, and handle accordingly
-                if (reader.IsDBNull(reader.GetOrdinal("run")))
+                // Read class first (needed for special handling)
+                string? className = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                double? lower = reader.IsDBNull(3)
+                    ? (double?)null
+                    : Convert.ToDouble(reader.GetValue(3));
+
+                double? upper = reader.IsDBNull(4)
+                    ? (double?)null
+                    : Convert.ToDouble(reader.GetValue(4));
+
+               
+
+                visualChecks.Add(new VisualCheckItem
                 {
-                    run = "1";
-                }
-                else
-                {
-                    // Increment the max value of the 'run' field
-                    run = (reader.GetInt32(reader.GetOrdinal("run")) + 1).ToString();
-                }
+                    Part = reader.IsDBNull(0) ? null : reader.GetString(0),
+                    Description = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    Class = className,
+                    lowerLimit = lower?.ToString(),
+                    upperLimit = upper?.ToString()
+                });
             }
 
-            return run;
+            return visualChecks;
         }
+
 
         public async Task<bool> SaveTestResultAsync(string partCa, string SerialNo, string runNo, SaveTestResultDTO result)
         {

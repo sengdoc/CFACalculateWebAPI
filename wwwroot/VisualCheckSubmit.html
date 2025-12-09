@@ -1,0 +1,176 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>BOM Visual Check</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Reuse CFA base style -->
+    <link href="css/CFACSS.css" rel="stylesheet" />
+
+</head>
+<body>
+
+    <h1>
+        <img src="./Img/FPALogo.png" alt="logo">
+        BOM Visual Check
+    </h1>
+
+    <!-- ================= INPUT ================= -->
+    <div class="product-card">
+        <div>
+            <label><strong>Serial No:</strong></label><br />
+            <input type="text" id="serialInput" placeholder="82879ELV485978" />
+        </div>
+
+        <div>
+            <label><strong>Task:</strong></label><br />
+            <div class="select-wrapper">
+                <select id="taskInput">
+                    <option value="3570">3570</option>
+                    <option value="4625">4625</option>
+                </select>
+            </div>
+        </div>
+
+        <div>
+            <button onclick="loadBOMVisual()">Load</button>
+        </div>
+    </div>
+
+    <!-- ================= LOADING ================= -->
+    <div id="loadingOverlay">
+        <div class="spinner">
+            <img src="./Img/FPALogo.png" alt="logo">
+        </div>
+    </div>
+
+    <!-- ================= VISUAL CHECK TABLE ================= -->
+    <div class="card">
+        <h3>Visual Check</h3>
+        <table id="visualCheckTable"></table>
+    </div>
+
+    <button id="saveResultTestBtn">Save Result Test</button>
+
+    <script>
+        const API_BASE = "/api/CFACal";
+        let lastData = { vVisualChecks: [] };
+
+        function showLoading(show) {
+            document.getElementById("loadingOverlay").style.display =
+                show ? "flex" : "none";
+        }
+
+        function loadBOMVisual() {
+            const serial = document.getElementById("serialInput").value.trim();
+            const task = document.getElementById("taskInput").value;
+
+            if (serial.length < 10) {
+                alert("Invalid Serial No");
+                return;
+            }
+
+            const CA = serial.substring(0, 5);
+            const SerialNo = serial.substring(5);
+
+            showLoading(true);
+
+            fetch(`${API_BASE}/GETBOMTest?CA=${CA}&SerialNo=${SerialNo}&Task=${task}`)
+                .then(r => r.json())
+                .then(data => {
+                    lastData.vVisualChecks = data.vVisualChecks || [];
+                    renderVisualCheck(lastData);
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Failed to load BOM visual check");
+                })
+                .finally(() => showLoading(false));
+        }
+
+        /* ================= VISUAL CHECK RENDER (CFA STYLE) ================= */
+        function renderVisualCheck(data) {
+            const table = document.getElementById("visualCheckTable");
+            table.innerHTML = "";
+
+            const header = table.insertRow();
+            ["P/N", "Description", "Result", "Comment"].forEach(h => {
+                const th = document.createElement("th");
+                th.textContent = h;
+                header.appendChild(th);
+            });
+
+            data.vVisualChecks.forEach((item, index) => {
+                const row = table.insertRow();
+                row.setAttribute("data-status", "F");
+
+                // P/N
+                row.insertCell().textContent = item.part ?? "";
+
+                // Desc
+                row.insertCell().textContent = item.description ?? "";
+
+                // Result
+                const resultCell = row.insertCell();
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+
+                checkbox.addEventListener("change", () => {
+                    item.result = checkbox.checked ? "OK" : "";
+                    row.setAttribute("data-status", checkbox.checked ? "P" : "F");
+                    //commentInput.disabled = !checkbox.checked;
+                    if (!checkbox.checked) {
+                        commentInput.value = "";
+                        item.comment = "";
+                    }
+                });
+
+                resultCell.appendChild(checkbox);
+
+                // Comment
+                const commentCell = row.insertCell();
+                const commentInput = document.createElement("input");
+                commentInput.type = "text";
+                commentInput.className = "vc-comment";
+                commentInput.placeholder = "Key comment here";
+                //commentInput.disabled = true;
+
+                commentInput.addEventListener("input", () => {
+                    item.comment = commentInput.value;
+                });
+
+                commentCell.appendChild(commentInput);
+
+                // init model
+                item.result = "";
+                item.comment = "";
+            });
+        }
+
+        /* ================= SAVE RESULT ================= */
+        document.getElementById("saveResultTestBtn").addEventListener("click", () => {
+            const serial = document.getElementById("serialInput").value.trim();
+            if (!serial) return alert("Serial No required");
+
+            const payload = {
+                PartProduct: serial,
+                vVisualResults: lastData.vVisualChecks
+            };
+
+            fetch(`${API_BASE}/SaveResultTest`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+                .then(r => r.json())
+                .then(res => alert(res.message || "Saved"))
+                .catch(err => {
+                    console.error(err);
+                    alert("Save failed");
+                });
+        });
+    </script>
+
+</body>
+</html>

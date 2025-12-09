@@ -1,3 +1,4 @@
+using CFACalculateWebAPI.Models;
 using CFACalculateWebAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -142,6 +143,39 @@ namespace CFACalculateWebAPI.Controllers
             catch (Exception ex)
             {
                 return BadRequest(new { message = "An error occurred while processing the request.", detail = ex.Message });
+            }
+        }
+
+        [HttpGet("GETBOMTest")]
+        public async Task<IActionResult> GETBOMTest(string? CA, string? SerialNo, string? Task)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(CA))
+                    return BadRequest(new { message = "CA is required" });
+
+                if (string.IsNullOrEmpty(SerialNo))
+                    return BadRequest(new { message = "SerialNo is required" });
+
+                if (string.IsNullOrEmpty(Task))
+                    return BadRequest(new { message = "Task is required" });
+
+                // Get Visual Check only (BOM-based)
+                var visualChecks = await _service.GetVisualChecksByCAAsync(CA, Task);
+
+                return Ok(new
+                {
+                    vVisualChecks = visualChecks,
+                    PartProduct = $"{CA}{SerialNo}" // helpful for frontend save
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    message = "An error occurred while processing the request.",
+                    detail = ex.Message
+                });
             }
         }
 
