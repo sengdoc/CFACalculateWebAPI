@@ -36,7 +36,7 @@
                 </div>
             </div>
             <div class="select-wrapper">
-                <button onclick="loadResults()" id="loadBtn">Load</button>
+                <button onclick="loadResults()" id="loadBtn" title="Load Results" aria-label="Load Results">🔄</button>
             </div>
 
 
@@ -51,7 +51,7 @@
 
 
 
-    <div id="kpiContainer"></div>
+    <div class="kpi-row" id="kpiContainer" role="status" aria-live="polite"></div>
 
     <div class="tab-container">
         <button class="tab-button active" onclick="openTab(event, 'ResultTableTab')">Result Table</button>
@@ -257,6 +257,18 @@
         // But since we define it after the script tag, it will override the previous one and future calls (loadResults)
         // will use this implementation.
 
+    </script>
+    <script>
+        const auditInput = document.getElementById("auditInput");
+        const loadBtn = document.getElementById("loadBtn");
+
+        // Allow Enter key to trigger the Load button
+        auditInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                loadBtn.click();
+            }
+        });
     </script>
 
 </body>

@@ -200,14 +200,13 @@ function renderKPIs(data) {
 
     const pass = passPartLimits + passVisual;
     const fail = total - pass;
-
     document.getElementById("kpiContainer").innerHTML = `
-        <div class="kpi-row">
-            <div class="kpi-box">Total Tests<div class="kpi-value">${total}</div></div>
-            <div class="kpi-box">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
-            <div class="kpi-box">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
-        </div>
-    `;
+       
+                             <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
+                             <div class="kpi-box kpi-pass">Passed<div class="kpi-value" style="color:green">${pass}</div></div>
+                              <div class="kpi-box kpi-fail">Failed<div class="kpi-value" style="color:red">${fail}</div></div>
+       
+                        `;
 }
 
 // ----------------- TABLES -----------------

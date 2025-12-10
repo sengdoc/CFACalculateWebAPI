@@ -30,7 +30,7 @@
                 </div>
             </div>
             <div>
-                <button class="select-wrapper" id="loadBtn">Load</button>
+                <button class="select-wrapper" id="loadBtn" title="Load Results" aria-label="Load Results">🔄</button>
             </div>
         </div>
     </div>
@@ -45,7 +45,7 @@
 
     <div class="card">
         <h3>Visual Check</h3>
-        <table id="visualCheckTable" aria-describedby="visualDesc">
+        <table id="visualCheckTable" aria-describedby="visualDesc" style="text-align: left;">
             <caption id="visualDesc" style="display:none">Parts visual checks and results</caption>
             <thead>
                 <tr><th>P/N</th><th>Description</th><th>Result</th><th>Comment</th></tr>
@@ -80,12 +80,14 @@
 
         function copySerialNo() {
             const serial = serialInput.value.trim();
-            if (!serial) {
-                alert("Serial No is empty");
+            if (!serial || serial.length < 5) {
+                alert("Serial No is empty or invalid");
                 return;
             }
 
-            navigator.clipboard.writeText(serial).then(() => {
+            const serialNo = serial.substring(5); // Extract Serial No part
+
+            navigator.clipboard.writeText(serialNo).then(() => {
                 copyFeedback.classList.add("show");
                 setTimeout(() => {
                     copyFeedback.classList.remove("show");
