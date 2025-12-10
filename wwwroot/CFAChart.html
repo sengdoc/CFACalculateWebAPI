@@ -7,14 +7,6 @@
     <link href="css/CFACSS.css" rel="stylesheet" />
     <script src="./lib/chart.js/Chart.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-
-    <!-- small style for comment input -->
-    <style>
-        .vc-comment {
-            width: 95%;
-            padding: 4px;
-        }
-    </style>
 </head>
 <body>
     <h1>
@@ -22,21 +14,28 @@
         CFA Enhanced Dashboard
     </h1>
 
-    <div class="input-container">
-        <label for="auditInput"><strong>Audit ID:</strong></label>
-        <input type="text" id="auditInput" placeholder="e.g. 1461">
-        <label for="tubTypeSelect"><strong>Tub Type:</strong></label>
-        <div class="select-wrapper">
-            <select id="tubTypeSelect">
-                <option value="AUTO">Auto (Default)</option>
-                <option value="Top">Top</option>
-                <option value="Bot">Bot</option>
-                <option value="Single">Single</option>
-            </select>
+    <div class="product-card" role="region" aria-labelledby="prodHeader">
+        <div>
+            <div class="select-wrapper">
+                <label for="auditInput"><strong>Audit ID:</strong></label><br />
+                <input type="text" id="auditInput" placeholder="e.g. 1461" />
+            </div>
+            <div>
+                <label for="tubTypeSelect"><strong>Tub Type:</strong></label><br />
+                <div class="select-wrapper">
+                    <select id="tubTypeSelect">
+                        <option value="AUTO">Auto (Default)</option>
+                        <option value="Top">Top</option>
+                        <option value="Bot">Bot</option>
+                        <option value="Single">Single</option>
+                    </select>
+                </div>
+            </div>
+            <div class="select-wrapper">
+                <button onclick="loadResults()" id="loadBtn">Load</button>
+            </div>
         </div>
-        <button onclick="loadResults()" id="loadBtn">Load</button>
     </div>
-    <br />
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner">
             <img src="./Img/FPALogo.png" alt="logo">

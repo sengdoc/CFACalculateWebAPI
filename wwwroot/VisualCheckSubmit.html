@@ -5,111 +5,33 @@
     <title>BOM Visual Check with KPI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="css/CFACSS.css" rel="stylesheet" />
-    <style>
-        .vc-comment {
-            width: 95%;
-            padding: 4px;
-        }
-
-        /* Loading overlay */
-        #loadingOverlay {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255,255,255,0.8);
-            z-index: 9999;
-        }
-
-            #loadingOverlay .spinner img {
-                width: 80px;
-                height: 80px;
-            }
-
-        .kpi-row {
-            display: flex;
-            gap: 12px;
-            margin: 12px 0;
-            flex-wrap: wrap;
-        }
-
-        .kpi-box {
-            background: #f0f0f0;
-            padding: 8px 12px;
-            border-radius: 6px;
-            min-width: 80px;
-            text-align: center;
-        }
-
-        .kpi-pass {
-            background: #d4edda;
-        }
-
-        .kpi-fail {
-            background: #f8d7da;
-        }
-
-        .kpi-value {
-            font-size: 1.4em;
-            font-weight: 700;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 8px;
-        }
-
-        thead th {
-            text-align: left;
-            border-bottom: 1px solid #ccc;
-            padding: 8px;
-        }
-
-        tbody td {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-            vertical-align: middle;
-        }
-
-        .result-input {
-            width: 80px;
-            padding: 4px;
-        }
-
-        .result-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-    </style>
 </head>
 <body>
     <h1><img src="./Img/FPALogo.png" alt="logo"> BOM Visual Check</h1>
 
     <div class="product-card" role="region" aria-labelledby="prodHeader">
         <div>
-            <label for="serialInput"><strong>Serial No:</strong></label><br />
-            <input type="text" id="serialInput" placeholder="81370BUG777777" aria-describedby="serialHelp" />
-            <!--<div id="serialHelp" style="font-size:0.9em;color:#666">Enter at least 10 characters or press Enter to load</div>-->
-        </div>
-        <div>
-            <label for="taskInput"><strong>Task:</strong></label><br />
-            <div class="select-wrapper">
-                <select id="taskInput" aria-label="Task selection">
-                    <option value="3570">3570</option>
-                    <option value="4625">4625</option>
-                </select>
+            <div>
+                <label for="serialInput"><strong>Serial No:</strong></label><br />
+                <div class="serial-wrapper">
+                    <input type="text" id="serialInput" placeholder="81370BUG777777" aria-describedby="serialHelp" />
+                    <button id="copySerialBtn" title="Copy Serial No" aria-label="Copy Serial No">📋</button>
+                </div>
+                <!--<div id="serialHelp" style="font-size:0.9em;color:#666">Enter at least 10 characters or press Enter to load</div>-->
+                <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite">Copied!</div>
             </div>
-        </div>
-        <div>
-            <button id="loadBtn">Load</button>
+            <div>
+                <label for="taskInput"><strong>Task:</strong></label><br />
+                <div class="select-wrapper">
+                    <select id="taskInput" aria-label="Task selection">
+                        <option value="3570">3570</option>
+                        <option value="4625">4625</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <button class="select-wrapper" id="loadBtn">Load</button>
+            </div>
         </div>
     </div>
 
@@ -143,6 +65,8 @@
         const taskInput = document.getElementById("taskInput");
         const loadBtn = document.getElementById("loadBtn");
         const saveBtn = document.getElementById("saveResultTestBtn");
+        const copySerialBtn = document.getElementById("copySerialBtn");
+        const copyFeedback = document.getElementById("copyFeedback");
         const loadingOverlay = document.getElementById("loadingOverlay");
         const kpiContainer = document.getElementById("kpiContainer");
         const tableBody = document.querySelector("#visualCheckTable tbody");
@@ -152,6 +76,23 @@
             loadingOverlay.setAttribute("aria-hidden", show ? "false" : "true");
             loadBtn.disabled = show;
             saveBtn.disabled = show || lastData.vVisualChecks.length === 0;
+        }
+
+        function copySerialNo() {
+            const serial = serialInput.value.trim();
+            if (!serial) {
+                alert("Serial No is empty");
+                return;
+            }
+
+            navigator.clipboard.writeText(serial).then(() => {
+                copyFeedback.classList.add("show");
+                setTimeout(() => {
+                    copyFeedback.classList.remove("show");
+                }, 2000);
+            }).catch(() => {
+                alert("Failed to copy Serial No");
+            });
         }
 
         async function fetchWithTimeout(url, opts = {}, ms = timeoutMs) {
@@ -210,10 +151,10 @@
             });
 
             kpiContainer.innerHTML = `
-                        <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
-                        <div class="kpi-box kpi-pass">Pass<div class="kpi-value">${pass}</div></div>
-                        <div class="kpi-box kpi-fail">Fail<div class="kpi-value">${fail}</div></div>
-                    `;
+                            <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
+                            <div class="kpi-box kpi-pass">Pass<div class="kpi-value">${pass}</div></div>
+                            <div class="kpi-box kpi-fail">Fail<div class="kpi-value">${fail}</div></div>
+                        `;
         }
 
         // Event delegation for results and comments
@@ -366,6 +307,7 @@
         // Event wiring
         loadBtn.addEventListener("click", () => loadBOMVisual());
         saveBtn.addEventListener("click", () => saveResults());
+        copySerialBtn.addEventListener("click", () => copySerialNo());
 
         // Allow Enter to trigger load
         serialInput.addEventListener("keydown", (e) => {

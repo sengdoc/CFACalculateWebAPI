@@ -44,6 +44,8 @@ button {
 
     button:disabled {
         background-color: #95a5a6;
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
 .btn-small {
@@ -60,6 +62,7 @@ input {
     margin-right: 6px;
     outline: none;
     transition: border-color 0.3s, box-shadow 0.3s;
+    box-sizing: border-box;
 }
 
     input:focus {
@@ -71,7 +74,7 @@ input {
    Visual Check Comment Input
 ----------------------- */
 .vc-comment {
-    width: 90%;
+    width: 95%;
     padding: 6px 8px;
     font-size: 14px;
     border-radius: 6px;
@@ -90,8 +93,9 @@ input {
 ======================= */
 .select-wrapper {
     position: relative;
-    display: inline-block;
-    width: 180px;
+    display: block;
+    margin-bottom: 20px;
+    width: 100%;
 }
 
     .select-wrapper select {
@@ -106,10 +110,12 @@ input {
         border-radius: 6px;
         cursor: pointer;
         outline: none;
+      
         background-image: url("data:image/svg+xml;utf8,<svg fill='%236c7a89' height='16' viewBox='0 0 24 24' width='16' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
         background-repeat: no-repeat;
         background-position: right 10px center;
         background-size: 16px;
+     
         transition: border 0.3s, box-shadow 0.3s;
     }
 
@@ -138,6 +144,15 @@ input {
     flex-direction: column;
     z-index: 9999;
 }
+
+    #loadingOverlay[aria-hidden="false"] {
+        display: flex;
+    }
+
+    #loadingOverlay .spinner img {
+        width: 80px;
+        height: 80px;
+    }
 
 .spinner {
     border: 6px solid #f3f3f3;
@@ -172,7 +187,7 @@ input {
 /* =======================
    CARDS & KPI
 ======================= */
-.card, .product-card, .kpi-box {
+.card, .product-card {
     background: white;
     border-radius: 12px;
     box-shadow: 0 3px 10px rgba(0,0,0,0.1);
@@ -181,11 +196,22 @@ input {
 }
 
 .product-card {
+    display: block;
+    width: 30%;
+    margin-bottom: 10px;
+}
+
+.product-card > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 16px;
+    align-items: flex-end;
+    width: 100%;
+}
+
+.product-card > div > div {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 600px;
-    flex-wrap: wrap;
+    flex-direction: column;
 }
 
 .product-text {
@@ -197,24 +223,32 @@ input {
 
 .kpi-row {
     display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin: 12px 0;
+    flex-wrap: wrap;
 }
 
 .kpi-box {
-    flex: 1;
+    background: #f0f0f0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    min-width: 80px;
     text-align: center;
-    padding: 15px;
-    border-radius: 10px;
-    background: white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    flex: 1;
     transition: all 0.3s ease-in-out;
 }
 
+.kpi-pass {
+    background: #d4edda;
+}
+
+.kpi-fail {
+    background: #f8d7da;
+}
+
 .kpi-value {
-    font-size: 22px;
-    font-weight: bold;
+    font-size: 1.4em;
+    font-weight: 700;
     margin-top: 6px;
 }
 
@@ -225,6 +259,69 @@ input {
 .kpi-fail .kpi-value {
     color: red;
 }
+
+/* =======================
+   SERIAL WRAPPER & COPY BUTTON
+======================= */
+.serial-wrapper {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+   
+}
+
+#copySerialBtn {
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 1em;
+    min-width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+}
+
+    #copySerialBtn:hover {
+        background: #f0f0f0;
+    }
+
+    #copySerialBtn:active {
+        background: #e0e0e0;
+    }
+
+.copy-feedback {
+    font-size: 0.9em;
+    color: #28a745;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+    .copy-feedback.show {
+        opacity: 1;
+    }
+
+/* =======================
+   RESULT WRAPPER & INPUT
+======================= */
+.result-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.result-input {
+    width: 80px;
+    padding: 4px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
 /* =======================
    TABLES
 ======================= */
@@ -238,16 +335,25 @@ table {
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
-th, td {
-    border: 1px solid #ddd;
-    padding: 12px; /* updated from 10px */
-    text-align: center;
-}
-
-th {
+thead th {
+    text-align: left;
+    border-bottom: 1px solid #ccc;
+    padding: 8px;
     background-color: #3498db;
     color: white;
     cursor: pointer;
+}
+
+tbody td {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: center;
 }
 
 tr:nth-child(even) {
@@ -362,10 +468,8 @@ canvas {
         flex-direction: column;
     }
 
-    .product-card {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
+    .product-card > div {
+        grid-template-columns: 1fr;
     }
 
     .kpi-box {
