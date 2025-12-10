@@ -194,7 +194,9 @@ function renderKPIs(data) {
             const upper = parseFloat(x.upperLimit);
             if (!isNaN(val) && val >= lower && val <= upper) passVisual++;
         } else {
-            if (x.result?.startsWith("checked")) passVisual++;
+            if (x.result?.startsWith("OK")) passVisual++;
+
+
         }
     });
 
