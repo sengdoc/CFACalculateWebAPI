@@ -11,70 +11,187 @@
             padding: 4px;
         }
 
-       
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.8);
+            z-index: 9999;
+        }
+
+            #loadingOverlay .spinner img {
+                width: 80px;
+                height: 80px;
+            }
+
+        .kpi-row {
+            display: flex;
+            gap: 12px;
+            margin: 12px 0;
+            flex-wrap: wrap;
+        }
+
+        .kpi-box {
+            background: #f0f0f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .kpi-pass {
+            background: #d4edda;
+        }
+
+        .kpi-fail {
+            background: #f8d7da;
+        }
+
+        .kpi-value {
+            font-size: 1.4em;
+            font-weight: 700;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        thead th {
+            text-align: left;
+            border-bottom: 1px solid #ccc;
+            padding: 8px;
+        }
+
+        tbody td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+
+        .result-input {
+            width: 80px;
+            padding: 4px;
+        }
+
+        .result-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
     <h1><img src="./Img/FPALogo.png" alt="logo"> BOM Visual Check</h1>
 
-    <div class="product-card">
+    <div class="product-card" role="region" aria-labelledby="prodHeader">
         <div>
-            <label><strong>Serial No:</strong></label><br />
-            <input type="text" id="serialInput" placeholder="81370BUG777777" />
+            <label for="serialInput"><strong>Serial No:</strong></label><br />
+            <input type="text" id="serialInput" placeholder="81370BUG777777" aria-describedby="serialHelp" />
+            <!--<div id="serialHelp" style="font-size:0.9em;color:#666">Enter at least 10 characters or press Enter to load</div>-->
         </div>
         <div>
-            <label><strong>Task:</strong></label><br />
+            <label for="taskInput"><strong>Task:</strong></label><br />
             <div class="select-wrapper">
-                <select id="taskInput">
+                <select id="taskInput" aria-label="Task selection">
                     <option value="3570">3570</option>
                     <option value="4625">4625</option>
                 </select>
             </div>
         </div>
         <div>
-            <button onclick="loadBOMVisual()">Load</button>
+            <button id="loadBtn">Load</button>
         </div>
     </div>
 
-    <div id="loadingOverlay" style="display:none;">
-        <div class="spinner">
-            <img src="./Img/FPALogo.png" alt="logo">
+    <div id="loadingOverlay" aria-hidden="true">
+        <div class="spinner" role="status" aria-live="polite">
+            <img src="./Img/FPALogo.png" alt="Loading..." />
         </div>
     </div>
 
-    <div class="kpi-row" id="kpiContainer"></div>
+    <div class="kpi-row" id="kpiContainer" role="status" aria-live="polite"></div>
 
     <div class="card">
         <h3>Visual Check</h3>
-        <table id="visualCheckTable"></table>
+        <table id="visualCheckTable" aria-describedby="visualDesc">
+            <caption id="visualDesc" style="display:none">Parts visual checks and results</caption>
+            <thead>
+                <tr><th>P/N</th><th>Description</th><th>Result</th><th>Comment</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 
-    <button id="saveResultTestBtn">Save Result Test</button>
+    <button id="saveResultTestBtn" disabled>Save Result Test</button>
 
     <script>
         const API_BASE = "./api/CFACal";
         let lastData = { vVisualChecks: [] };
+        const timeoutMs = 15000;
+
+        const serialInput = document.getElementById("serialInput");
+        const taskInput = document.getElementById("taskInput");
+        const loadBtn = document.getElementById("loadBtn");
+        const saveBtn = document.getElementById("saveResultTestBtn");
+        const loadingOverlay = document.getElementById("loadingOverlay");
+        const kpiContainer = document.getElementById("kpiContainer");
+        const tableBody = document.querySelector("#visualCheckTable tbody");
 
         function showLoading(show) {
-            document.getElementById("loadingOverlay").style.display = show ? "flex" : "none";
+            loadingOverlay.style.display = show ? "flex" : "none";
+            loadingOverlay.setAttribute("aria-hidden", show ? "false" : "true");
+            loadBtn.disabled = show;
+            saveBtn.disabled = show || lastData.vVisualChecks.length === 0;
         }
 
-        function loadBOMVisual() {
-            const serial = document.getElementById("serialInput").value.trim();
-            const task = document.getElementById("taskInput").value;
-            if (serial.length < 10) { alert("Invalid Serial No"); return; }
+        async function fetchWithTimeout(url, opts = {}, ms = timeoutMs) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), ms);
+            try {
+                opts.signal = controller.signal;
+                const r = await fetch(url, opts);
+                clearTimeout(id);
+                return r;
+            } catch (err) {
+                clearTimeout(id);
+                throw err;
+            }
+        }
+
+        async function loadBOMVisual() {
+            const serial = serialInput.value.trim();
+            const task = taskInput.value;
+            if (serial.length < 10) { alert("Invalid Serial No (must be at least 14 chars)"); serialInput.focus(); return; }
+
             const CA = serial.substring(0, 5);
             const SerialNo = serial.substring(5);
 
             showLoading(true);
-            fetch(`${API_BASE}/GETBOMTest?CA=${CA}&SerialNo=${SerialNo}&Task=${task}`)
-                .then(r => r.json())
-                .then(data => {
-                    lastData.vVisualChecks = data.vVisualChecks || [];
-                    renderVisualCheck();
-                })
-                .catch(err => { console.error(err); alert("Failed to load BOM visual check"); })
-                .finally(() => showLoading(false));
+            try {
+                const resp = await fetchWithTimeout(`${API_BASE}/GETBOMTest?CA=${encodeURIComponent(CA)}&SerialNo=${encodeURIComponent(SerialNo)}&Task=${encodeURIComponent(task)}`);
+                if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+                const data = await resp.json();
+                lastData.vVisualChecks = Array.isArray(data.vVisualChecks) ? data.vVisualChecks : [];
+                renderVisualCheck();
+                if (lastData.vVisualChecks.length === 0) alert("No visual checks returned for this serial/task.");
+            } catch (err) {
+                console.error(err);
+                if (err.name === 'AbortError') alert("Request timed out. Try again.");
+                else alert("Failed to load BOM visual check");
+            } finally {
+                showLoading(false);
+                saveBtn.disabled = lastData.vVisualChecks.length === 0;
+            }
         }
 
         function updateKPICount() {
@@ -82,7 +199,9 @@
             let pass = 0, fail = 0;
             lastData.vVisualChecks.forEach(item => {
                 if (item.test_tag === 'VSCHK') {
-                    if (item.result === "OK") pass++; else fail++;
+                    // FIX: cannot increment a ternary result — use explicit if/else
+                    if (item.result === "OK") pass++;
+                    else fail++;
                 } else {
                     const val = parseFloat(item.result);
                     if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null && val >= item.lowerLimit && val <= item.upperLimit) pass++;
@@ -90,121 +209,175 @@
                 }
             });
 
-            document.getElementById("kpiContainer").innerHTML = `
-                    <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
-                    <div class="kpi-box kpi-pass">Pass<div class="kpi-value">${pass}</div></div>
-                    <div class="kpi-box kpi-fail">Fail<div class="kpi-value">${fail}</div></div>
-                `;
+            kpiContainer.innerHTML = `
+                        <div class="kpi-box">Total<div class="kpi-value">${total}</div></div>
+                        <div class="kpi-box kpi-pass">Pass<div class="kpi-value">${pass}</div></div>
+                        <div class="kpi-box kpi-fail">Fail<div class="kpi-value">${fail}</div></div>
+                    `;
         }
 
-        function updateVisualResult(item, inputOrCheckbox) {
-            if (inputOrCheckbox.type === "checkbox") {
-                item.result = inputOrCheckbox.checked ? "OK" : "NG";
-            } else {
-                item.result = inputOrCheckbox.value.trim();
-                const val = parseFloat(item.result);
-                if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null) {
-                    inputOrCheckbox.style.backgroundColor = (val >= item.lowerLimit && val <= item.upperLimit) ? "#d4edda" : "#f8d7da";
-                } else inputOrCheckbox.style.backgroundColor = "white";
-            }
-            updateKPICount();
-        }
-
+        // Event delegation for results and comments
         function renderVisualCheck() {
-            const table = document.getElementById("visualCheckTable");
-            table.innerHTML = "";
-            const header = table.insertRow();
-            ["P/N", "Description", "Result", "Comment"].forEach(h => header.insertCell().textContent = h);
+            tableBody.innerHTML = "";
 
-            lastData.vVisualChecks.forEach((item) => {
-                const row = table.insertRow();
-                row.setAttribute("data-part", item.part ?? "");
+            lastData.vVisualChecks.forEach((item, idx) => {
+                const tr = document.createElement("tr");
+                tr.dataset.index = idx;
 
-                const pnCell = row.insertCell(); pnCell.textContent = item.part ?? "";
-                const descCell = row.insertCell(); descCell.textContent = item.description ?? "";
-                const resultCell = row.insertCell();
-                const commentCell = row.insertCell();
+                const pnTd = document.createElement("td"); pnTd.textContent = item.part ?? "";
+                const descTd = document.createElement("td"); descTd.textContent = item.description ?? "";
+                const resTd = document.createElement("td");
+                const commTd = document.createElement("td");
 
+                // comment input
                 const commentInput = document.createElement("input");
                 commentInput.type = "text";
                 commentInput.className = "vc-comment";
                 commentInput.placeholder = "Key comment here";
                 commentInput.value = item.comment ?? "";
-                commentInput.addEventListener("input", () => item.comment = commentInput.value);
-                commentCell.appendChild(commentInput);
+                commentInput.addEventListener("input", (e) => {
+                    lastData.vVisualChecks[idx].comment = e.target.value;
+                });
+                commTd.appendChild(commentInput);
 
                 if (item.test_tag === 'LMCHK') {
                     const wrapper = document.createElement("div");
-                    wrapper.style.display = "flex";
-                    wrapper.style.alignItems = "center";
-                    wrapper.style.gap = "6px";
+                    wrapper.className = "result-wrapper";
 
                     const input = document.createElement("input");
                     input.type = "text";
+                    input.className = "result-input";
                     input.value = item.result ?? "";
-                    input.style.width = "80px";
-                    input.addEventListener("input", () => updateVisualResult(item, input));
+                    input.setAttribute("aria-label", `Limit check for ${item.part ?? idx}`);
+                    input.addEventListener("input", (e) => {
+                        const v = e.target.value.trim();
+                        lastData.vVisualChecks[idx].result = v;
+                        const val = parseFloat(v);
+                        if (!isNaN(val) && item.lowerLimit != null && item.upperLimit != null) {
+                            e.target.style.backgroundColor = (val >= item.lowerLimit && val <= item.upperLimit) ? "#d4edda" : "#f8d7da";
+                        } else {
+                            e.target.style.backgroundColor = "white";
+                        }
+                        updateKPICount();
+                    });
 
                     const limits = document.createElement("span");
                     limits.textContent = `[${item.lowerLimit ?? "-"} - ${item.upperLimit ?? "-"}]`;
-
                     wrapper.appendChild(input);
                     wrapper.appendChild(limits);
-                    resultCell.appendChild(wrapper);
+                    resTd.appendChild(wrapper);
                 } else if (item.test_tag === 'VSCHK') {
                     const checkbox = document.createElement("input");
                     checkbox.type = "checkbox";
                     checkbox.checked = item.result === "OK";
-                    checkbox.addEventListener("change", () => updateVisualResult(item, checkbox));
-                    resultCell.appendChild(checkbox);
+                    checkbox.setAttribute("aria-label", `Visual check for ${item.part ?? idx}`);
+                    checkbox.addEventListener("change", (e) => {
+                        lastData.vVisualChecks[idx].result = e.target.checked ? "OK" : "NG";
+                        updateKPICount();
+                    });
 
-                    // Only clicking the Result cell toggles checkbox
-                    resultCell.addEventListener("click", (e) => {
+                    // Make cell clickable to toggle (but preserve checkbox click)
+                    resTd.addEventListener("click", (e) => {
                         if (e.target !== checkbox) {
                             checkbox.checked = !checkbox.checked;
-                            updateVisualResult(item, checkbox);
+                            lastData.vVisualChecks[idx].result = checkbox.checked ? "OK" : "NG";
+                            updateKPICount();
                         }
                     });
+
+                    resTd.appendChild(checkbox);
+                } else {
+                    // fallback: text input for unknown tag
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "result-input";
+                    input.value = item.result ?? "";
+                    input.addEventListener("input", (e) => {
+                        lastData.vVisualChecks[idx].result = e.target.value;
+                        updateKPICount();
+                    });
+                    resTd.appendChild(input);
                 }
+
+                tr.appendChild(pnTd);
+                tr.appendChild(descTd);
+                tr.appendChild(resTd);
+                tr.appendChild(commTd);
+                tableBody.appendChild(tr);
             });
+
             updateKPICount();
+            saveBtn.disabled = lastData.vVisualChecks.length === 0;
         }
 
-        document.getElementById("saveResultTestBtn").addEventListener("click", async () => {
-            const serialInput = document.getElementById("serialInput").value.trim();
-            const taskInput = document.getElementById("taskInput").value.trim();
-            if (!serialInput || !taskInput) { alert("Serial No and Task are required."); return; }
+        async function saveResults() {
+            const serial = serialInput.value.trim();
+            const task = taskInput.value.trim();
+            if (!serial || !task) { alert("Serial No and Task are required."); return; }
+            if (lastData.vVisualChecks.length === 0) { alert("No results to save."); return; }
 
-            const CA = serialInput.substring(0, 5);
-            const Serial = serialInput.substring(5);
+            const CA = serial.substring(0, 5);
+            const SerialNo = serial.substring(5);
 
-            const visualData = lastData.vVisualChecks.map(item => ({
-                PartNo: item.part,
-                ResultValue: item.result,
-                tstStatus: (item.test_tag === 'VSCHK')
-                    ? (item.result === "OK" ? "P" : "F")
-                    : (!isNaN(item.result) && item.lowerLimit != null && item.upperLimit != null && parseFloat(item.result) >= item.lowerLimit && parseFloat(item.result) <= item.upperLimit ? "P" : "F"),
-                Comment: item.comment ?? ""
-            }));
+            const visualData = lastData.vVisualChecks.map(item => {
+                const resultStr = item.result ?? "";
+                const isVs = item.test_tag === 'VSCHK';
+                const passed = isVs
+                    ? (resultStr === "OK")
+                    : (!isNaN(resultStr) && item.lowerLimit != null && item.upperLimit != null && parseFloat(resultStr) >= item.lowerLimit && parseFloat(resultStr) <= item.upperLimit);
+                return {
+                    PartNo: item.part,
+                    ResultValue: resultStr,
+                    tstStatus: passed ? "P" : "F",
+                    Comment: item.comment ?? ""
+                };
+            });
 
             const payload = {
-                CA: CA,
-                SerialNo: Serial,
-                Task: taskInput,
+                CA,
+                SerialNo,
+                Task: task,
                 vVisualResults: visualData,
                 TypeInput: 'VSCHK'
             };
 
+            showLoading(true);
             try {
-                const resp = await fetch(`${API_BASE}/SaveResultTest`, {
+                const resp = await fetchWithTimeout(`${API_BASE}/SaveResultTest`, {
                     method: 'POST',
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
-                const resJson = await resp.json();
-                if (resp.ok) alert(resJson.message || "Result saved successfully");
-                else alert(resJson.message || "Error saving result");
-            } catch (err) { console.error(err); alert("Error saving result"); }
+                const resJson = await resp.json().catch(() => ({}));
+                if (resp.ok) {
+                    alert(resJson.message || "Result saved successfully");
+                } else {
+                    alert(resJson.message || `Error saving result (status ${resp.status})`);
+                }
+            } catch (err) {
+                console.error(err);
+                if (err.name === 'AbortError') alert("Save request timed out.");
+                else alert("Error saving result");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Event wiring
+        loadBtn.addEventListener("click", () => loadBOMVisual());
+        saveBtn.addEventListener("click", () => saveResults());
+
+        // Allow Enter to trigger load
+        serialInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                loadBOMVisual();
+            }
+        });
+
+        // Basic paste sanitization: trim input
+        serialInput.addEventListener("paste", (e) => {
+            setTimeout(() => serialInput.value = serialInput.value.trim(), 0);
         });
     </script>
 </body>
