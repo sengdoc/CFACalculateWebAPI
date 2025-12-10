@@ -1119,15 +1119,31 @@ ORDER BY ps.task_reference;
         {
             bool isSuccess = false;
 
-            // Check if vVisualResults and vAutoResults are not null and contain elements before removing the first item
-            if (result.vVisualResults != null && result.vVisualResults.Any())
+            // Remove leading placeholder item if present (first element null or all fields empty)
+            if (result?.vVisualResults != null && result.vVisualResults.Count > 0)
             {
-                result.vVisualResults.RemoveAt(0); // Remove first item if not empty
+                var first = result.vVisualResults[0];
+                bool isEmptyFirst = first == null ||
+                    (string.IsNullOrWhiteSpace(first.PartNo) &&
+                     string.IsNullOrWhiteSpace(first.ResultValue) &&
+                     string.IsNullOrWhiteSpace(first.tstStatus) &&
+                     string.IsNullOrWhiteSpace(first.Comment));
+
+                if (isEmptyFirst)
+                    result.vVisualResults.RemoveAt(0);
             }
 
-            if (result.vAutoResults != null && result.vAutoResults.Any())
+            if (result?.vAutoResults != null && result.vAutoResults.Count > 0)
             {
-                result.vAutoResults.RemoveAt(0); // Remove first item if not empty
+                var firstAuto = result.vAutoResults[0];
+                bool isEmptyFirstAuto = firstAuto == null ||
+                    (string.IsNullOrWhiteSpace(firstAuto.PartNo) &&
+                     string.IsNullOrWhiteSpace(firstAuto.ResultValue) &&
+                     string.IsNullOrWhiteSpace(firstAuto.tstStatus) &&
+                     string.IsNullOrWhiteSpace(firstAuto.Comment));
+
+                if (isEmptyFirstAuto)
+                    result.vAutoResults.RemoveAt(0);
             }
 
             using var conn = await GetOpenConnectionAsync();
