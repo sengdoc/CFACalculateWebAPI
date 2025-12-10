@@ -13,7 +13,11 @@
         <img src="./Img/FPALogo.png" alt="logo">
         CFA Enhanced Dashboard
     </h1>
-
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner">
+            <img src="./Img/FPALogo.png" alt="logo">
+        </div>
+    </div>
     <div class="product-card" role="region" aria-labelledby="prodHeader">
         <div>
             <div class="select-wrapper">
@@ -34,18 +38,18 @@
             <div class="select-wrapper">
                 <button onclick="loadResults()" id="loadBtn">Load</button>
             </div>
+
+
+
         </div>
-    </div>
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="spinner">
-            <img src="./Img/FPALogo.png" alt="logo">
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div id="productText" class="product-text">Waiting for data...</div>
+            <button id="copyProductBtn" onclick="copyProductInfo()" title="Copy Product S/N" aria-label="Copy Product S/N">📋</button>
         </div>
     </div>
 
-    <div class="product-card">
-        <div id="productText" class="product-text">Waiting for data...</div>
-        <button class="btn-small" onclick="copyProductInfo()">Copy Product S/N</button>
-    </div>
+
 
     <div id="kpiContainer"></div>
 
